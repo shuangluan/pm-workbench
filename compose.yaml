@@ -1,0 +1,36 @@
+# Local single-operator deployment (PRD §2.4, §9). The web port is bound to
+# 127.0.0.1 on the host and the database publishes no port at all.
+# Do not expose this to a LAN or the internet: it has no TLS or multi-user auth.
+
+services:
+  db:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_USER: pew
+      POSTGRES_DB: pew
+      POSTGRES_PASSWORD: ${PEW_DB_PASSWORD:?set PEW_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pew -d pew"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PEW_DATABASE_URL: postgres://pew:${PEW_DB_PASSWORD}@db:5432/pew
+    ports:
+      - "127.0.0.1:3210:3210"
+    volumes:
+      - appdata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  appdata:

@@ -1,0 +1,23 @@
+{
+  "name": "@pew/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@pew/core": "*",
+    "drizzle-orm": "0.45.4",
+    "@electric-sql/pglite": "0.3.14",
+    "pg": "8.23.1",
+    "fflate": "0.8.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.5",
+    "@types/pg": "8.15.6"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@pew/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port ${PORT:-3210}",
+    "build": "next build",
+    "start": "next start --hostname ${PEW_BIND:-127.0.0.1} --port ${PORT:-3210}"
+  },
+  "dependencies": {
+    "@pew/core": "*",
+    "@pew/db": "*",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  }
+}
