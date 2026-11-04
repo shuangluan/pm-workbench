@@ -25,8 +25,22 @@ services:
         condition: service_healthy
     environment:
       PEW_DATABASE_URL: postgres://pew:${PEW_DB_PASSWORD}@db:5432/pew
+      PEW_WORKER: external
     ports:
       - "127.0.0.1:3210:3210"
+    volumes:
+      - appdata:/data
+    restart: unless-stopped
+
+  # Runs model tasks. Shares /data with web for screenshots and the master key.
+  worker:
+    build: .
+    command: ["npm", "run", "worker"]
+    depends_on:
+      web:
+        condition: service_started
+    environment:
+      PEW_DATABASE_URL: postgres://pew:${PEW_DB_PASSWORD}@db:5432/pew
     volumes:
       - appdata:/data
     restart: unless-stopped

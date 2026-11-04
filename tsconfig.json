@@ -23,6 +23,7 @@
     "packages/*/*.config.ts",
     "examples/**/*.ts",
     "vitest.config.ts",
-    "scripts/*.ts"
+    "scripts/*.ts",
+    "apps/worker/src"
   ]
 }

@@ -10,24 +10,33 @@ import {
   listRequests,
   listSources,
   loadMemory,
+  listRuns,
+  previewAbstraction,
+  runIsStale,
   type ClaimView,
 } from "@pew/db";
 import Link from "next/link";
 import {
   addClaimAction,
   archiveAnalysisAction,
+  cancelRunAction,
   deleteAnalysisAction,
+  retryRunAction,
   reviewAction,
   saveReportAction,
   setChangeNodesAction,
   setScopeAction,
+  startAbstractionAction,
+  startTranscribeAction,
   updateAnalysisAction,
   uploadImagesAction,
 } from "@/app/actions";
+import { RunWatcher } from "@/components/RunWatcher";
 import { ScreenshotUploadForm } from "@/components/ScreenshotUploadForm";
 import { Form } from "@/components/Form";
 import { getDb } from "@/lib/db";
 import { found } from "@/lib/found";
+import { FAILURE_HINT, RUN_STATUS, TASK_LABEL } from "@/lib/runs-ui";
 import { ANALYSIS_STATUS, NODE_TYPE, fmtDate, KIND, KIND_HELP, REJECT, REPORT_STATUS, REVIEW, SECTION, VALIDITY } from "@/lib/labels";
 
 const STEPS = [
@@ -170,7 +179,7 @@ export default async function AnalysisPage({
       {archived ? <p className="banner banner-warn">该分析已归档，只读。可在“设置”中取消归档。</p> : null}
       {created ? (
         <p className="banner banner-info">
-          已创建：{analysis.requestIds.length} 条需求、{analysis.selectedSources.length} 份资料/截图，都已加入本次分析。下一步：打开资料划选依据添加条目，或先给截图转写。
+          已创建：{analysis.requestIds.length} 条需求、{analysis.selectedSources.length} 份资料/截图，都已加入本次分析。下一步：让模型生成分析，或打开资料划选依据手工添加条目。
         </p>
       ) : null}
 
@@ -393,8 +402,42 @@ async function ClaimsStep({
   const textSources = analysis.selectedSources.filter((s) => s.kind !== "image" && s.validity === "valid");
   const sections = [...new Set([...CLAIM_SECTIONS, ...claims.map((c) => c.section)])];
 
+  const coverage = (await buildSnapshot(db, productId, analysis.id)).coverage;
+
   return (
     <section className="section">
+      {!archived ? <AiPanel productId={productId} analysis={analysis} /> : null}
+      {coverage.length ? (
+        <div className="claim-group">
+          <h2>诉求覆盖</h2>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">需求</th>
+                  <th scope="col">业务方</th>
+                  <th scope="col">目标</th>
+                  <th scope="col">共同部分</th>
+                  <th scope="col">特有约束</th>
+                  <th scope="col">处理方式</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coverage.map((r) => (
+                  <tr key={r.requestHandle}>
+                    <td>{r.requestHandle}</td>
+                    <td>{r.party}</td>
+                    <td>{r.goal}</td>
+                    <td>{r.shared}</td>
+                    <td>{r.specific}</td>
+                    <td>{HANDLING[r.handling]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
       {claims.length ? (
         sections.map((section) => {
           const list = claims.filter((c) => c.section === section);
@@ -411,7 +454,7 @@ async function ClaimsStep({
           );
         })
       ) : (
-        <p className="empty">还没有条目。模型分析将在后续版本提供；现在可以手工添加条目。</p>
+        <p className="empty">还没有条目。可以让模型生成，也可以手工添加。</p>
       )}
 
       {!archived ? (
@@ -477,6 +520,112 @@ async function ClaimsStep({
           />
         </details>
       ) : null}
+    </section>
+  );
+}
+
+const HANDLING: Record<string, string> = { shared_capability: "纳入通用能力", configuration: "配置/扩展", separate: "分开处理", not_covered: "未覆盖" };
+
+async function AiPanel({ productId, analysis }: { productId: string; analysis: AnalysisData }) {
+  const db = await getDb();
+  const [preview, runs] = await Promise.all([previewAbstraction(db, productId, analysis.id), listRuns(db, productId, analysis.id)]);
+  const base = [
+    { name: "productId", type: "hidden" as const, defaultValue: productId },
+    { name: "analysisId", type: "hidden" as const, defaultValue: analysis.id },
+    { name: "key", type: "hidden" as const, defaultValue: crypto.randomUUID() },
+  ];
+  const active = runs.filter((r) => r.status === "queued" || r.status === "running");
+  const latest = runs.find((r) => r.taskType === "abstraction");
+  const lastGood = runs.find((r) => r.taskType === "abstraction" && r.status === "succeeded");
+  const stale = lastGood ? runIsStale(lastGood.scope, analysis) : false;
+  const failed = runs.filter((r) => ["failed", "interrupted"].includes(r.status)).slice(0, 1).filter((r) => !runs.some((x) => x.taskType === r.taskType && x.createdAt > r.createdAt));
+
+  if (!preview.configured) {
+    return (
+      <section className="card ai-panel">
+        <h2>让模型生成分析</h2>
+        <p>
+          配置模型后，可以一键生成共同问题、通用能力建议、冲突和未知项，并读取聊天截图。<Link href="/settings#model">去配置模型</Link>
+        </p>
+        <p className="help">不配置模型也能手工完成全部流程。</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card ai-panel">
+      <RunWatcher url={`/p/${productId}/a/${analysis.id}/runs`} active={active.map((r) => `${r.id}:${r.status}`).join()} />
+      <h2>让模型生成分析</h2>
+      {active.map((r) => (
+        <div key={r.id} className="run-line" role="status">
+          <span className="tag tag-pending_review">{RUN_STATUS[r.status]}</span>
+          <span>{TASK_LABEL[r.taskType] ?? r.taskType}</span>
+          <Form action={cancelRunAction} submit="取消" tone="secondary" inline fields={[{ name: "productId", type: "hidden", defaultValue: productId }, { name: "runId", type: "hidden", defaultValue: r.id }]} />
+        </div>
+      ))}
+      {active.length ? <p className="help">运行时可以继续做别的事，也可以关闭页面。取消会尽力中止请求，但服务商可能已经计费。</p> : null}
+      {failed.map((r) => {
+        const risky = r.errorKind === "outcome_unknown" || r.errorKind === "interrupted";
+        return (
+          <div key={r.id} className="banner banner-danger">
+            <p>
+              {TASK_LABEL[r.taskType] ?? r.taskType}{RUN_STATUS[r.status]}：{r.errorMessage}
+            </p>
+            {r.errorKind && FAILURE_HINT[r.errorKind] ? <p>{FAILURE_HINT[r.errorKind]}</p> : null}
+            <Form
+              action={retryRunAction}
+              submit="重试"
+              tone="secondary"
+              inline
+              confirm={risky ? "上次的结果未知，服务商可能已经计费。重试可能产生额外费用，继续吗？" : undefined}
+              fields={[
+                { name: "productId", type: "hidden", defaultValue: productId },
+                { name: "runId", type: "hidden", defaultValue: r.id },
+                { name: "key", type: "hidden", defaultValue: crypto.randomUUID() },
+              ]}
+            />
+          </div>
+        );
+      })}
+      {stale ? <p className="banner banner-warn">需求或资料范围已变化，当前结果基于旧范围。可以重新生成。</p> : null}
+      {preview.untranscribed.length ? (
+        <div className="section">
+          <p>
+            有 {preview.untranscribed.length} 张截图还没有转写，<strong>不会</strong>进入分析。读取时，截图原图会发送给 {preview.host}。
+          </p>
+          <Form
+            action={startTranscribeAction}
+            submit={`读取 ${preview.untranscribed.length} 张截图`}
+            tone="secondary"
+            inline
+            fields={[...base, ...preview.untranscribed.map((u, i) => ({ name: "imageVersionId", type: "hidden" as const, defaultValue: u.versionId, key: i }))]}
+          />
+        </div>
+      ) : null}
+      <details className="disclosure" open={!latest}>
+        <summary>这次会发送什么</summary>
+        <ul className="list compact">
+          <li>
+            发送到：{preview.host}（模型 {preview.modelName}）
+          </li>
+          <li>需求 {preview.requests.length} 条：{preview.requests.map((r) => r.party).join("、") || "无"}</li>
+          <li>
+            资料 {preview.sources.length} 份：
+            {preview.sources.map((s) => `${s.name}（${s.chars.toLocaleString()} 字符）`).join("、") || "无"}
+          </li>
+          <li>约 {preview.inputTokens.toLocaleString()} 输入 tokens（估算）</li>
+          <li>估算费用：{preview.cost ? `$${preview.cost.min.toFixed(4)} – $${preview.cost.max.toFixed(4)}` : "未知（未填写单价）"}</li>
+        </ul>
+      </details>
+      {preview.blockers.map((b) => (
+        <p key={b} className="warn">
+          {b}
+        </p>
+      ))}
+      {!preview.blockers.length && !active.length ? (
+        <Form action={startAbstractionAction} submit={lastGood ? "重新生成" : "生成分析"} fields={base} />
+      ) : null}
+      {lastGood ? <p className="help">重新生成会替换未核对的 AI 条目；你已接受、修正或不采纳的条目会保留。</p> : null}
     </section>
   );
 }

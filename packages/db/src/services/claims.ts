@@ -14,7 +14,7 @@ import {
   type EvidenceValidity,
   type ReviewAction,
 } from "@pew/core";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import type { Db } from "../client";
 import { AppError, newId, notFound, revisionConflict } from "../errors";
 import { analysisRuns, claimEvidences, claims, evidences, sourceVersions, systemEdges } from "../schema";
@@ -166,12 +166,23 @@ export interface ClaimView extends ClaimRecord {
 }
 
 export async function listClaims(db: Db, productId: string, analysisId: string): Promise<ClaimView[]> {
-  const rows = await db
+  let rows = await db
     .select({ claim: claims, taskType: analysisRuns.taskType })
     .from(claims)
     .innerJoin(analysisRuns, eq(analysisRuns.id, claims.runId))
     .where(and(eq(claims.productId, productId), eq(analysisRuns.analysisId, analysisId)))
     .orderBy(asc(analysisRuns.createdAt), asc(claims.position));
+  // A newer model run replaces the older one's unreviewed claims. Anything the
+  // user already handled stays, so regenerating never discards their work.
+  const latest = new Map<string, string>();
+  for (const r of await db
+    .select({ id: analysisRuns.id, taskType: analysisRuns.taskType })
+    .from(analysisRuns)
+    .where(and(eq(analysisRuns.analysisId, analysisId), eq(analysisRuns.status, "succeeded"), ne(analysisRuns.taskType, "manual")))
+    .orderBy(asc(analysisRuns.createdAt))) {
+    latest.set(r.taskType, r.id);
+  }
+  rows = rows.filter(({ claim, taskType }) => taskType === "manual" || claim.review !== "pending" || latest.get(taskType) === claim.runId);
   const links = rows.length
     ? await db
         .select()

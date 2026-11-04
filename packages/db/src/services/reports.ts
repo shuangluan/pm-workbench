@@ -7,13 +7,14 @@ import {
   renderSpecMarkdown,
   reportStatus,
   type ClaimRecord,
+  type CoverageRow,
   type Lang,
   type ReportSnapshot,
 } from "@pew/core";
 import { and, desc, eq, inArray, max } from "drizzle-orm";
 import type { Db } from "../client";
 import { notFound } from "../errors";
-import { analyses, decisions, evidences, reportVersions, sourceVersions, sources } from "../schema";
+import { analyses, analysisRuns, decisions, evidences, reportVersions, sourceVersions, sources } from "../schema";
 import { getAnalysis, setAnalysisStatus } from "./analyses";
 import { listClaims } from "./claims";
 import { analysisImpact } from "./memory";
@@ -63,7 +64,21 @@ export async function buildSnapshot(db: Db, productId: string, analysisId: strin
     .select()
     .from(decisions)
     .where(and(eq(decisions.productId, productId), eq(decisions.analysisId, analysisId)));
-  const modelRun = claimViews.find((c) => c.taskType !== "manual");
+  const [latestRun] = await db
+    .select()
+    .from(analysisRuns)
+    .where(and(eq(analysisRuns.analysisId, analysisId), eq(analysisRuns.taskType, "abstraction"), eq(analysisRuns.status, "succeeded")))
+    .orderBy(desc(analysisRuns.createdAt))
+    .limit(1);
+  const runModel = (latestRun?.inputSnapshot as { model?: { adapter: string; model: string } } | undefined)?.model;
+  const handleOfRequest = new Map(ordered.map((r, i) => [r.id, `R${i + 1}`]));
+  const coverage = ((latestRun?.output as { coverage?: (Omit<CoverageRow, "requestHandle" | "evidence"> & { requestId: string })[] } | null)?.coverage ?? []).flatMap(
+    ({ requestId, ...row }) => {
+      const requestHandle = handleOfRequest.get(requestId);
+      // Requests removed from the scope since that run are not reported.
+      return requestHandle ? [{ ...row, requestHandle, evidence: [] }] : [];
+    },
+  );
   const impact = await analysisImpact(db, productId, analysis.changeNodeIds);
 
   return {
@@ -79,7 +94,7 @@ export async function buildSnapshot(db: Db, productId: string, analysisId: strin
       originalText: r.originalText ?? "［来源已删除，原句不再保留］",
     })),
     sources: analysis.selectedSources.map((s) => ({ name: s.name, version: s.version, validity: s.validity, sourceVersionId: s.versionId })),
-    coverage: [],
+    coverage,
     claims: claimsForReport,
     impact: impact ?? undefined,
     evidence: registry.entries().map((e) => {
@@ -97,7 +112,7 @@ export async function buildSnapshot(db: Db, productId: string, analysisId: strin
     }),
     decisions: decisionRows.map((d) => ({ text: d.content, reason: d.reason, decidedAt: d.decidedAt.toISOString().slice(0, 10) })),
     openQuestions: [],
-    model: modelRun ? { provider: "preset", model: modelRun.taskType } : undefined,
+    model: runModel ? { provider: runModel.adapter, model: runModel.model } : latestRun ? { provider: "preset", model: latestRun.taskType } : undefined,
     templateVersion: TEMPLATE_VERSION,
   };
 }

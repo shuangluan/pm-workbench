@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ingestBytes, MAX_FILE_BYTES, MAX_FILES_PER_UPLOAD, type ClaimKind, type ClaimSection, type RejectReason } from "@pew/core";
@@ -8,7 +9,15 @@ import {
   addEvidenceBySpan,
   addImageSource,
   appendToScope,
+  cancelRun,
   quickStart,
+  removeModelKey,
+  retryRun,
+  saveModelConfig,
+  startAbstraction,
+  startSplit,
+  startTranscribe,
+  testModelConnection,
   saveTranscript,
   setChangeNodes,
   addSource,
@@ -39,6 +48,7 @@ import {
   SESSION_COOKIE,
   type RequestFields,
 } from "@pew/db";
+import { ModelError } from "@pew/model-adapters";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -56,7 +66,7 @@ const strs = (fd: FormData, name: string) => fd.getAll(name).filter((v): v is st
 function echo(fd: FormData): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of new Set(fd.keys())) {
-    if (key.startsWith("$") || /passphrase|code/i.test(key)) continue;
+    if (key.startsWith("$") || /passphrase|code|apiKey/i.test(key)) continue;
     const all = strs(fd, key);
     out[key] = all.length > 1 ? all : (all[0] ?? "");
   }
@@ -417,7 +427,7 @@ export const quickStartAction = act(async (fd) => {
     sources: docs,
     images: await readImages(fd),
   });
-  redirect(`/p/${r.productId}/a/${r.analysisId}?step=scope&created=1`);
+  redirect(`/p/${r.productId}/a/${r.analysisId}?step=claims&created=1`);
 });
 
 export const bulkCreateRequestsAction = act(async (fd) => {
@@ -479,6 +489,88 @@ export async function citeSelectionAction(input: { productId: string; versionId:
     const ev = await addEvidenceBySpan(await getDb(), input.productId, input.versionId, input.start, input.end);
     revalidatePath("/", "layout");
     return { evidenceId: ev.id };
+  } catch (err) {
+    if (err instanceof AppError) return { error: err.message };
+    throw err;
+  }
+}
+
+// Model
+
+export const saveModelAction = act(async (fd) => {
+  await saveModelConfig(await getDb(), config.dataDir, {
+    adapter: str(fd, "adapter") === "openai_compatible" ? "openai_compatible" : "anthropic_messages",
+    endpoint: str(fd, "endpoint"),
+    model: str(fd, "model"),
+    apiKey: str(fd, "apiKey"),
+    allowLocalHttp: strs(fd, "allowLocalHttp").includes("yes"),
+    contextLimit: Number(str(fd, "contextLimit")),
+    outputLimit: Number(str(fd, "outputLimit")),
+    timeoutSeconds: Number(str(fd, "timeoutSeconds")),
+    inputPricePerMillion: str(fd, "inputPricePerMillion"),
+    outputPricePerMillion: str(fd, "outputPricePerMillion"),
+  });
+  return "已保存";
+});
+
+export const removeModelKeyAction = act(async () => {
+  await removeModelKey(await getDb());
+  return "密钥已删除";
+});
+
+const CONNECTION_HINTS: Record<string, string> = {
+  auth: "密钥错误：请检查密钥是否正确、是否有权限使用这个模型。",
+  model_not_found: "模型不存在：请检查模型 ID，以及账号是否能使用它。",
+  network: "连不上：请检查端点地址和网络。",
+  rate_limited: "被限流或额度用完：请稍后再试，或检查账户额度。",
+  unsupported_format: "格式不支持：这个模型或服务可能不支持结构化输出。",
+  outcome_unknown: "连接超时：请调高超时，或检查网络。",
+  truncated: "输出上限过低：请调高输出上限。",
+  refused: "模型拒绝了测试请求。",
+};
+
+export const testModelAction = act(async () => {
+  try {
+    const { model } = await testModelConnection(await getDb(), config.dataDir);
+    return `连接成功，模型 ${model} 已响应。`;
+  } catch (err) {
+    if (err instanceof ModelError) throw new AppError("invalid_input", CONNECTION_HINTS[err.kind] ?? err.message);
+    throw err;
+  }
+});
+
+// Runs
+
+export const startAbstractionAction = act(async (fd) => {
+  await startAbstraction(await getDb(), str(fd, "productId"), str(fd, "analysisId"), str(fd, "key"));
+});
+
+/** Per-image keys derive from the form's key, so resubmitting does not queue a second read. */
+function derivedKey(base: string, part: string) {
+  const h = createHash("sha256").update(`${base}:${part}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+export const startTranscribeAction = act(async (fd) => {
+  const db = await getDb();
+  for (const versionId of strs(fd, "imageVersionId")) {
+    await startTranscribe(db, str(fd, "productId"), str(fd, "analysisId"), versionId, derivedKey(str(fd, "key"), versionId));
+  }
+});
+
+export const cancelRunAction = act(async (fd) => {
+  await cancelRun(await getDb(), str(fd, "productId"), str(fd, "runId"));
+});
+
+export const retryRunAction = act(async (fd) => {
+  await retryRun(await getDb(), str(fd, "productId"), str(fd, "runId"), str(fd, "key"));
+});
+
+/** Called from the request importer. Not a form action. */
+export async function startSplitAction(input: { productId: string; analysisId: string; text: string; key: string; textVersionId?: string }): Promise<{ runId?: string; error?: string }> {
+  await requireSession();
+  try {
+    return { runId: await startSplit(await getDb(), input.productId, input.analysisId, input.text, input.key, input.textVersionId) };
   } catch (err) {
     if (err instanceof AppError) return { error: err.message };
     throw err;

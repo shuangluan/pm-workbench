@@ -13,3 +13,7 @@ export * from "./services/portability";
 export * from "./services/media";
 export * from "./services/memory";
 export * from "./services/quickstart";
+export * from "./secrets";
+export * from "./services/models";
+export * from "./services/runs";
+export * from "./services/worker";

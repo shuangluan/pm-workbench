@@ -3,6 +3,8 @@
 import { parseCsv, splitRequests, splitTable, type SplitMode } from "@pew/core/split";
 import { useEffect, useId, useRef, useState } from "react";
 
+export type ModelSplitResult = { requests: { party: string; title: string; text: string }[]; questions: string[] } | { error: string };
+
 export interface RequestRow {
   key: string;
   party: string;
@@ -30,16 +32,36 @@ export function RequestImporter({
   rows,
   onChange,
   initialText = "",
+  modelSplit,
 }: {
   rows: RequestRow[];
   onChange: (rows: RequestRow[]) => void;
   initialText?: string;
+  /** Present when a model is configured and an analysis is open. */
+  modelSplit?: (text: string) => Promise<ModelSplitResult>;
 }) {
   const uid = useId();
   const [text, setText] = useState(initialText);
   const [mode, setMode] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [defaultParty, setDefaultParty] = useState("");
+  const [splitting, setSplitting] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<string[]>([]);
+
+  const runModelSplit = async () => {
+    if (!modelSplit || !text.trim()) return;
+    if (rows.length && !window.confirm("用模型结果替换下方已编辑的预览？")) return;
+    setSplitting(true);
+    setModelError(null);
+    const r = await modelSplit(text);
+    setSplitting(false);
+    if ("error" in r) return setModelError(r.error);
+    setMode("模型拆分（请核对）");
+    setTruncated(false);
+    setQuestions(r.questions);
+    onChange(r.requests.map((c) => ({ key: key(), party: c.party, title: c.title, text: c.text })));
+  };
 
   const apply = (result: ReturnType<typeof splitRequests>, label: string) => {
     if (rows.length && !window.confirm("用新的识别结果替换下方已编辑的预览？")) return;
@@ -97,6 +119,11 @@ export function RequestImporter({
         <button type="button" className="btn btn-secondary" onClick={() => split()} disabled={!text.trim()}>
           识别拆分
         </button>
+        {modelSplit ? (
+          <button type="button" className="btn btn-secondary" onClick={() => void runModelSplit()} disabled={!text.trim() || splitting}>
+            {splitting ? "模型拆分中…" : "用模型拆分"}
+          </button>
+        ) : null}
         <label className="btn btn-secondary file-btn">
           上传 CSV
           <input
@@ -112,6 +139,7 @@ export function RequestImporter({
         </label>
         <span className="help">Excel 表格可以直接复制粘贴，不必另存为 CSV。</span>
       </div>
+      {modelError ? <p className="error">{modelError}</p> : null}
 
       {rows.length || mode ? (
         <section className="preview" aria-label="拆分预览">
@@ -159,6 +187,16 @@ export function RequestImporter({
           <button type="button" className="btn btn-secondary" onClick={() => onChange([...rows, { key: key(), party: defaultParty, title: "", text: "" }])}>
             添加一条
           </button>
+          {questions.length ? (
+            <div className="section">
+              <p className="label">可以追问提出方（复制后自行发送）：</p>
+              <ul className="list compact">
+                {questions.map((q) => (
+                  <li key={q}>{q}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </div>

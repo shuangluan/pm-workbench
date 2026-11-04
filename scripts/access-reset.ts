@@ -16,7 +16,7 @@ process.stdout.write(
     `      ${code}`,
     "",
     `  Valid for ${SETUP_CODE_TTL_MS / 60_000} minutes (until ${expiresAt.toLocaleTimeString()}).`,
-    "  Open http://127.0.0.1:3210/login, enter the code and choose a passphrase.",
+    "  Open the app's /login page, enter the code and choose a passphrase.",
     "  All existing sessions are signed out now. This code is not logged anywhere.",
     "",
   ].join("\n"),

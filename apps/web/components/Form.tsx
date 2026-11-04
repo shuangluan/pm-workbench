@@ -28,6 +28,8 @@ export interface Field {
   showWhen?: { field: string; in: string[] };
   /** Render inside the collapsed "more options" section. */
   advanced?: boolean;
+  /** React key when several fields share a name. */
+  key?: string | number;
 }
 
 type Action = (state: FormState, data: FormData) => Promise<FormState>;
@@ -67,7 +69,7 @@ export function Form({
   function renderField(f: Field) {
     const id = `${uid}-${f.name}`;
     const v = value(f);
-    if (f.type === "hidden") return <input key={f.name} type="hidden" name={f.name} value={String(f.defaultValue ?? "")} />;
+    if (f.type === "hidden") return <input key={f.key ?? f.name} type="hidden" name={f.name} value={String(f.defaultValue ?? "")} />;
     const label = f.label ? (
       <label htmlFor={f.type === "checkboxes" ? undefined : id} className="label">
         {f.label}
