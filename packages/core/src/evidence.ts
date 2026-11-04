@@ -5,6 +5,7 @@
 // 1-based. Nothing here invents PDF page numbers.
 
 import { createHash } from "node:crypto";
+import { charCount, normalizeText } from "./text";
 import type { EvidenceValidity } from "./types";
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -16,17 +17,7 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-/** Strip BOM, unify line endings and Unicode composition so offsets are stable. */
-export function normalizeText(raw: string): string {
-  return raw.replace(/^﻿/, "").replace(/\r\n?/g, "\n").normalize("NFC");
-}
-
-/** Counts code points, which is what a user means by "characters". */
-export function charCount(text: string): number {
-  let n = 0;
-  for (const _ of text) n++;
-  return n;
-}
+export { charCount, normalizeText } from "./text";
 
 export type IngestResult =
   | { ok: true; text: string; hash: string; chars: number }

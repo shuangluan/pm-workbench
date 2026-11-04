@@ -43,7 +43,7 @@ export default async function LoginPage() {
       ) : (
         <section className="card">
           <h2>尚未初始化</h2>
-          <p>在项目目录的另一个终端运行下面的命令，获取一次性初始化码，然后刷新本页：</p>
+          <p>初始化码已显示在启动服务的终端里。如果没有看到（例如在 Docker 中运行），在项目目录运行下面的命令，然后刷新本页：</p>
           <pre>npm run access:reset</pre>
           <p className="help">初始化码只显示在终端，不写入日志，30 分钟内有效。</p>
         </section>

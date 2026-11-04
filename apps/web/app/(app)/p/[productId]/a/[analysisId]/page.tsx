@@ -1,4 +1,4 @@
-import { openItems, reportStatus, type ClaimKind, type ClaimSection } from "@pew/core";
+import { nextSteps, openItems, reportStatus, type ClaimKind, type ClaimSection } from "@pew/core";
 import {
   buildSnapshot,
   CLAIM_SECTIONS,
@@ -9,6 +9,7 @@ import {
   listReportVersions,
   listRequests,
   listSources,
+  loadMemory,
   type ClaimView,
 } from "@pew/db";
 import Link from "next/link";
@@ -18,13 +19,16 @@ import {
   deleteAnalysisAction,
   reviewAction,
   saveReportAction,
+  setChangeNodesAction,
   setScopeAction,
   updateAnalysisAction,
+  uploadImagesAction,
 } from "@/app/actions";
+import { ScreenshotUploadForm } from "@/components/ScreenshotUploadForm";
 import { Form } from "@/components/Form";
 import { getDb } from "@/lib/db";
 import { found } from "@/lib/found";
-import { ANALYSIS_STATUS, fmtDate, KIND, KIND_HELP, REJECT, REPORT_STATUS, REVIEW, SECTION, VALIDITY } from "@/lib/labels";
+import { ANALYSIS_STATUS, NODE_TYPE, fmtDate, KIND, KIND_HELP, REJECT, REPORT_STATUS, REVIEW, SECTION, VALIDITY } from "@/lib/labels";
 
 const STEPS = [
   { id: "scope", label: "1 · 需求与资料" },
@@ -120,16 +124,17 @@ export default async function AnalysisPage({
   searchParams,
 }: {
   params: Promise<{ productId: string; analysisId: string }>;
-  searchParams: Promise<{ step?: string }>;
+  searchParams: Promise<{ step?: string; created?: string; cite?: string }>;
 }) {
   const { productId, analysisId } = await params;
-  const requested = (await searchParams).step;
+  const { step: requested, created, cite } = await searchParams;
   const step: Step = STEPS.find((s) => s.id === requested)?.id ?? "scope";
   const db = await getDb();
   const product = await found(getProduct(db, productId));
   const analysis = await found(getAnalysis(db, productId, analysisId));
   const claims = await listClaims(db, productId, analysisId);
   const pending = claims.filter((c) => c.review === "pending").length;
+  const memory = step === "settings" ? await loadMemory(db, productId) : null;
   const base = `/p/${productId}/a/${analysisId}`;
   const archived = analysis.status === "archived";
 
@@ -163,6 +168,11 @@ export default async function AnalysisPage({
       {analysis.goal ? <p>目标：{analysis.goal}</p> : null}
       {analysis.changeDescription ? <p className="muted">改动描述：{analysis.changeDescription}</p> : null}
       {archived ? <p className="banner banner-warn">该分析已归档，只读。可在“设置”中取消归档。</p> : null}
+      {created ? (
+        <p className="banner banner-info">
+          已创建：{analysis.requestIds.length} 条需求、{analysis.selectedSources.length} 份资料/截图，都已加入本次分析。下一步：打开资料划选依据添加条目，或先给截图转写。
+        </p>
+      ) : null}
 
       <nav className="tabs" aria-label="分析步骤">
         {STEPS.map((s) => (
@@ -173,7 +183,7 @@ export default async function AnalysisPage({
       </nav>
 
       {step === "scope" ? <ScopeStep productId={productId} analysis={analysis} /> : null}
-      {step === "claims" ? <ClaimsStep productId={productId} analysis={analysis} claims={claims} archived={archived} /> : null}
+      {step === "claims" ? <ClaimsStep productId={productId} analysis={analysis} claims={claims} archived={archived} cite={cite} /> : null}
       {step === "report" ? <ReportStep productId={productId} analysisId={analysisId} pending={pending} /> : null}
       {step === "settings" ? (
         <section className="section">
@@ -192,6 +202,34 @@ export default async function AnalysisPage({
                   { name: "changeDescription", label: "改动描述", type: "textarea", rows: 2, defaultValue: analysis.changeDescription },
                 ]}
               />
+            </section>
+            <section className="card">
+              <h2>影响检查起点</h2>
+              {memory?.nodes.length ? (
+                <>
+                  <p className="help">
+                    选择这次改动直接涉及的模块或数据对象。报告会沿已确认的关系找出依赖它们的对象，并列出需要验证的问题。未确认的关系不参与。
+                  </p>
+                  <Form
+                    action={setChangeNodesAction}
+                    submit="保存起点"
+                    tone="secondary"
+                    fields={[
+                      { name: "productId", type: "hidden", defaultValue: productId },
+                      { name: "analysisId", type: "hidden", defaultValue: analysisId },
+                      {
+                        name: "nodeIds",
+                        label: "变更对象",
+                        type: "checkboxes",
+                        defaultValue: analysis.changeNodeIds,
+                        options: memory.nodes.map((n) => ({ value: n.id, label: n.name, hint: NODE_TYPE[n.type] })),
+                      },
+                    ]}
+                  />
+                </>
+              ) : (
+                <p className="help">这个产品还没有已确认的模块与关系。局部记忆页面将在后续版本提供；示例产品中可以先体验。</p>
+              )}
             </section>
             <section className="card">
               <h2>归档与删除</h2>
@@ -235,64 +273,124 @@ async function ScopeStep({ productId, analysis }: { productId: string; analysis:
   const latestIds = new Set(sources.map((s) => s.versionId));
   const staleSelected = analysis.selectedSources.filter((s) => !latestIds.has(s.versionId));
   const totalChars = analysis.selectedSources.reduce((n, s) => n + s.charCount, 0);
+  const base = `/p/${productId}`;
+  const q = `analysis=${analysis.id}`;
+  const kindLabel = (k: string) => (k === "image" ? "截图" : k === "transcript" ? "转写" : "");
 
   return (
     <section className="section">
-      <p className="help">
-        选择本次分析使用的需求与资料。保存后，已保存的报告不受影响；分析状态回到草稿。当前已选资料共 {totalChars.toLocaleString()} 字符。
-      </p>
-      {staleSelected.length ? (
-        <p className="banner banner-warn">
-          已选的 {staleSelected.map((s) => `“${s.name}” v${s.version}`).join("、")} 有更新版本。保留旧版本会继续使用旧原文；如需更新，请勾选新版本。
-        </p>
+      <div className="grid-2">
+        <section className="card">
+          <h2>添加需求</h2>
+          <p className="help">粘贴聊天记录、表格或列表，预览确认后自动加入本次分析。</p>
+          <p>
+            <Link className="btn btn-primary" href={`${base}/requests/new?${q}`}>
+              批量录入需求
+            </Link>
+          </p>
+        </section>
+        <section className="card">
+          <h2>添加聊天截图</h2>
+          <ScreenshotUploadForm action={uploadImagesAction} productId={productId} analysisId={analysis.id} />
+        </section>
+      </div>
+
+      {analysis.selectedSources.length ? (
+        <>
+          <h2>本次资料</h2>
+          <ul className="list">
+            {analysis.selectedSources.map((s) => (
+              <li key={s.versionId}>
+                <Link href={`${base}/sources/${s.sourceId}?v=${s.versionId}&${q}`}>
+                  {s.name} v{s.version}
+                </Link>
+                {kindLabel(s.kind) ? <span className="tag">{kindLabel(s.kind)}</span> : null}
+                <span className="muted">
+                  {" "}
+                  · {s.kind === "image" ? "打开后可转写" : "打开后可划选引用"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
-      <Form
-        action={setScopeAction}
-        submit="保存范围"
-        fields={[
-          { name: "productId", type: "hidden", defaultValue: productId },
-          { name: "analysisId", type: "hidden", defaultValue: analysis.id },
-          { name: "revision", type: "hidden", defaultValue: String(analysis.revision) },
-          {
-            name: "requestIds",
-            label: "需求",
-            type: "checkboxes",
-            defaultValue: analysis.requestIds,
-            options: requests.map((r) => ({
-              value: r.id,
-              label: `${r.party}：${(r.fields as Record<string, string>).title || (r.originalText ?? "").slice(0, 40)}`,
-              hint: (r.originalText ?? "［来源已删除］").slice(0, 80),
-            })),
-          },
-          {
-            name: "sourceVersionIds",
-            label: "资料（当前版本）",
-            type: "checkboxes",
-            defaultValue: analysis.selectedSources.map((s) => s.versionId),
-            options: [
-              ...sources
-                .filter((s) => s.validity === "valid")
-                .map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}`, hint: `${s.charCount.toLocaleString()} 字符` })),
-              ...staleSelected.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}`, hint: "旧版本" })),
-            ],
-          },
-        ]}
-      />
-      <p className="help">
-        还缺资料或需求？<Link href={`/p/${productId}/sources/new`}>添加资料</Link> · <Link href={`/p/${productId}/requests/new`}>录入需求</Link>
-      </p>
+
+      <details className="disclosure">
+        <summary>调整范围（勾选本次使用的需求与资料）</summary>
+        <p className="help">已选文字资料共 {totalChars.toLocaleString()} 字符。保存后，已保存的报告不受影响；分析状态回到草稿。</p>
+        {staleSelected.length ? (
+          <p className="banner banner-warn">
+            已选的 {staleSelected.map((s) => `“${s.name}” v${s.version}`).join("、")} 有更新版本。保留旧版本会继续使用旧原文；如需更新，请勾选新版本。
+          </p>
+        ) : null}
+        <Form
+          action={setScopeAction}
+          submit="保存范围"
+          fields={[
+            { name: "productId", type: "hidden", defaultValue: productId },
+            { name: "analysisId", type: "hidden", defaultValue: analysis.id },
+            { name: "revision", type: "hidden", defaultValue: String(analysis.revision) },
+            {
+              name: "requestIds",
+              label: "需求",
+              type: "checkboxes",
+              defaultValue: analysis.requestIds,
+              options: requests.map((r) => ({
+                value: r.id,
+                label: `${r.party}：${(r.fields as Record<string, string>).title || (r.originalText ?? "").slice(0, 40)}`,
+                hint: (r.originalText ?? "［来源已删除］").slice(0, 80),
+              })),
+            },
+            {
+              name: "sourceVersionIds",
+              label: "资料（当前版本）",
+              type: "checkboxes",
+              defaultValue: analysis.selectedSources.map((s) => s.versionId),
+              options: [
+                ...sources
+                  .filter((s) => s.validity === "valid")
+                  .map((s) => ({
+                    value: s.versionId,
+                    label: `${s.name} v${s.version}`,
+                    hint: s.kind === "image" ? "截图" : `${s.charCount.toLocaleString()} 字符${s.kind === "transcript" ? " · 转写" : ""}`,
+                  })),
+                ...staleSelected.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}`, hint: "旧版本" })),
+              ],
+            },
+          ]}
+        />
+        <p className="help">
+          文字资料（规则、接口说明）请在 <Link href={`${base}/sources/new`}>添加资料</Link> 页上传。
+        </p>
+      </details>
     </section>
   );
 }
 
-async function ClaimsStep({ productId, analysis, claims, archived }: { productId: string; analysis: AnalysisData; claims: ClaimView[]; archived: boolean }) {
+async function ClaimsStep({
+  productId,
+  analysis,
+  claims,
+  archived,
+  cite,
+}: {
+  productId: string;
+  analysis: AnalysisData;
+  claims: ClaimView[];
+  archived: boolean;
+  cite?: string;
+}) {
   const db = await getDb();
   const requests = await listRequests(db, productId, analysis.requestIds);
   const scopeVersionIds = [...analysis.selectedSources.map((s) => s.versionId)];
   const pickable = await listEvidence(db, productId, { versionIds: scopeVersionIds });
   const requestEvidence = await listEvidence(db, productId, { ids: requests.map((r) => r.originalEvidenceId) });
-  const cited = await listEvidence(db, productId, { ids: [...new Set(claims.flatMap((c) => c.evidenceIds))] });
+  const cited = await listEvidence(db, productId, { ids: [...new Set([...claims.flatMap((c) => c.evidenceIds), ...(cite ? [cite] : [])])] });
   const evidence = new Map([...cited, ...pickable, ...requestEvidence].map((e) => [e.id, e]));
+  // A citation just made by selecting text is offered first and pre-checked.
+  const citeOption = cite ? cited.find((e) => e.id === cite) : undefined;
+  const options = [...(citeOption ? [citeOption] : []), ...[...requestEvidence, ...pickable].filter((e) => e.id !== cite)];
+  const textSources = analysis.selectedSources.filter((s) => s.kind !== "image" && s.validity === "valid");
   const sections = [...new Set([...CLAIM_SECTIONS, ...claims.map((c) => c.section)])];
 
   return (
@@ -317,10 +415,22 @@ async function ClaimsStep({ productId, analysis, claims, archived }: { productId
       )}
 
       {!archived ? (
-        <details className="disclosure" open={!claims.length}>
+        <details className="disclosure" id="add-claim" open={!claims.length || !!cite}>
           <summary>添加条目（用户输入）</summary>
           <p className="help">
-            手工条目标为“用户输入”，并按与 AI 结果相同的规则校验：原文事实必须带引用；推断需要理由和引用；建议需要理由；未知需要说明缺什么。
+            最快的方式：打开资料，<strong>用鼠标选中一句话</strong>，点“以此为依据添加条目”。
+            {textSources.length ? (
+              <>
+                {" "}
+                打开：
+                {textSources.map((s, i) => (
+                  <span key={s.versionId}>
+                    {i ? "、" : ""}
+                    <Link href={`/p/${productId}/sources/${s.sourceId}?v=${s.versionId}&analysis=${analysis.id}`}>{s.name}</Link>
+                  </span>
+                ))}
+              </>
+            ) : null}
           </p>
           <Form
             action={addClaimAction}
@@ -328,33 +438,41 @@ async function ClaimsStep({ productId, analysis, claims, archived }: { productId
             fields={[
               { name: "productId", type: "hidden", defaultValue: productId },
               { name: "analysisId", type: "hidden", defaultValue: analysis.id },
-              { name: "section", label: "分区", type: "select", options: CLAIM_SECTIONS.map((s) => ({ value: s, label: SECTION[s] })) },
               {
                 name: "kind",
-                label: "结论类型",
+                label: "这是什么",
                 type: "select",
                 options: (["source_fact", "inference", "suggestion", "unknown"] as ClaimKind[]).map((k) => ({ value: k, label: `${KIND[k]} — ${KIND_HELP[k]}` })),
               },
               { name: "text", label: "内容", type: "textarea", rows: 3, required: true },
-              { name: "reasoning", label: "理由 / 推导（推断、建议必填）", type: "textarea", rows: 2 },
-              { name: "missing", label: "缺少什么、找谁确认（未知必填）", type: "textarea", rows: 2 },
+              { name: "reasoning", label: "理由 / 推导", type: "textarea", rows: 2, required: true, showWhen: { field: "kind", in: ["inference", "suggestion"] } },
+              { name: "missing", label: "缺少什么、找谁确认", type: "textarea", rows: 2, required: true, showWhen: { field: "kind", in: ["unknown"] } },
               {
                 name: "evidenceIds",
-                label: "引用已有原句",
+                label: "依据",
                 type: "checkboxes",
-                options: [...requestEvidence, ...pickable].map((e) => ({
+                defaultValue: cite ? [cite] : [],
+                options: options.map((e) => ({
                   value: e.id,
                   label: (e.quote ?? "［已删除］").slice(0, 120),
-                  hint: `${e.sourceKind === "request_text" ? "需求原话" : e.sourceName} v${e.version} L${e.lineStart}`,
+                  hint: `${e.sourceKind === "request_text" ? "需求原话" : e.sourceName} v${e.version} L${e.lineStart}${e.id === cite ? " · 刚选中" : ""}`,
                 })),
               },
               {
-                name: "newQuoteVersionId",
-                label: "或新增一条引用：来自",
+                name: "section",
+                label: "放在报告的哪一节",
                 type: "select",
-                options: [{ value: "", label: "（不新增）" }, ...analysis.selectedSources.filter((s) => s.validity === "valid").map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}` }))],
+                advanced: true,
+                options: CLAIM_SECTIONS.map((s) => ({ value: s, label: SECTION[s] })),
               },
-              { name: "newQuote", label: "从原文复制的句子", type: "textarea", rows: 2 },
+              {
+                name: "newQuoteVersionId",
+                label: "粘贴原句新增引用：来自",
+                type: "select",
+                advanced: true,
+                options: [{ value: "", label: "（不新增）" }, ...textSources.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}` }))],
+              },
+              { name: "newQuote", label: "从原文复制的句子", type: "textarea", rows: 2, advanced: true },
             ]}
           />
         </details>
@@ -368,7 +486,9 @@ async function ReportStep({ productId, analysisId, pending }: { productId: strin
   const [versions, draft] = await Promise.all([listReportVersions(db, productId, analysisId), buildSnapshot(db, productId, analysisId)]);
   const status = reportStatus(draft);
   const open = openItems(draft);
+  const steps = nextSteps(draft);
   const base = `/p/${productId}/a/${analysisId}`;
+  const STEP_KIND = { decide: "需要决策", supply: "需要补充或确认", verify: "需要验证", review: "需要评审的建议" } as const;
 
   return (
     <section className="section">
@@ -388,6 +508,28 @@ async function ReportStep({ productId, analysisId, pending }: { productId: strin
             { name: "analysisId", type: "hidden", defaultValue: analysisId },
           ]}
         />
+      </div>
+      <div className="card">
+        <h2>建议的下一步（{steps.length}）</h2>
+        <p className="help">由已核对条目和已确认依赖自动整理，会写入报告。这是行动清单，不是结论。</p>
+        {steps.length ? (
+          (["decide", "supply", "verify", "review"] as const).map((k) => {
+            const list = steps.filter((s) => s.kind === k);
+            if (!list.length) return null;
+            return (
+              <div key={k}>
+                <h3>{STEP_KIND[k]}</h3>
+                <ol>
+                  {list.map((s, i) => (
+                    <li key={i}>{s.text}</li>
+                  ))}
+                </ol>
+              </div>
+            );
+          })
+        ) : (
+          <p className="empty">还没有可整理的冲突、未知项或依赖。</p>
+        )}
       </div>
       <h2>已保存版本</h2>
       {versions.length ? (

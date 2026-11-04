@@ -105,6 +105,7 @@ export async function loadExample(db: Db): Promise<string> {
       title: "统一批量导出能力",
       goal: "判断三方导出诉求能否归入一个通用导出能力，并检查权限服务变更的影响。",
       changeDescription: "调整权限服务的客户可见范围判定。",
+      changeNodeIds: [ids.get("n_permission")!],
       status: "pending_review",
     });
     await tx.insert(analysisRequests).values(requestIds.map((requestId, position) => ({ productId, analysisId, requestId, position })));

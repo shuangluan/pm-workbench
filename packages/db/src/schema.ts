@@ -53,6 +53,8 @@ export const analyses = pgTable(
     title: text("title").notNull(),
     goal: text("goal").notNull().default(""),
     changeDescription: text("change_description").notNull().default(""),
+    /** Confirmed-memory nodes this change touches; the impact check starts from them (F07). */
+    changeNodeIds: jsonb("change_node_ids").$type<string[]>().notNull().default([]),
     status: text("status", { enum: ["draft", "pending_review", "report_saved", "archived"] }).notNull().default("draft"),
     revision: revision(),
     createdAt: createdAt(),
@@ -66,7 +68,8 @@ export const sources = pgTable(
   {
     id: id(),
     productId: productId(),
-    kind: text("kind", { enum: ["file", "paste", "request_text"] }).notNull(),
+    /** `image` stores an original screenshot; `transcript` is text read from an image by the user or a model. */
+    kind: text("kind", { enum: ["file", "paste", "request_text", "image", "transcript"] }).notNull(),
     name: text("name").notNull(),
     /** User-entered metadata only. Never fetched (F03). */
     originalUrl: text("original_url"),
@@ -88,6 +91,13 @@ export const sourceVersions = pgTable(
     charCount: integer("char_count").notNull(),
     /** Server-generated storage path for the original upload. Never user-supplied. */
     storageKey: text("storage_key"),
+    /** Sniffed from the bytes, never taken from the upload's name or header. Set for images. */
+    mediaType: text("media_type"),
+    byteSize: integer("byte_size"),
+    /** For transcripts: the image version this text was read from. */
+    derivedFromVersionId: text("derived_from_version_id"),
+    /** Who produced a transcript: the user, or a model (must then be reviewed). */
+    transcribedBy: text("transcribed_by", { enum: ["user", "model"] }),
     validity: text("validity", { enum: ["valid", "needs_review", "source_deleted"] }).notNull().default("valid"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: createdAt(),
@@ -97,7 +107,16 @@ export const sourceVersions = pgTable(
     unique("source_versions_product_id_uq").on(t.productId, t.id),
     unique("source_versions_source_version_uq").on(t.sourceId, t.version),
     index("source_versions_hash_idx").on(t.productId, t.contentHash),
-    check("source_versions_deleted_text", sql`(${t.validity} = 'source_deleted') = (${t.text} IS NULL)`),
+    foreignKey({
+      name: "source_versions_derived_from_fk",
+      columns: [t.productId, t.derivedFromVersionId],
+      foreignColumns: [t.productId, t.id],
+    }),
+    // Deleted versions keep neither text nor a stored file; live ones keep at least one.
+    check(
+      "source_versions_content",
+      sql`CASE WHEN ${t.validity} = 'source_deleted' THEN ${t.text} IS NULL AND ${t.storageKey} IS NULL ELSE ${t.text} IS NOT NULL OR ${t.storageKey} IS NOT NULL END`,
+    ),
   ],
 );
 

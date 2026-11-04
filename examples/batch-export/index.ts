@@ -129,6 +129,21 @@ export const abstractionDrafts: ClaimDraft[] = [
     requestHandles: ["R3"],
   },
   {
+    section: "configuration",
+    kind: "suggestion",
+    text: "按业务方配置导出范围：运营 = 当前筛选（本人可见），销售 = 团队范围（仅团队负责人），客服 = 工单关联。手机号排除是固定规则，不做成可关闭的配置项。",
+    evidence: [{ handle: h("ev_member_own") }, { handle: h("ev_lead_team") }, { handle: h("ev_phone_restricted") }],
+    reasoning: "三方差异集中在选取范围；手机号属于受限字段，不能交给配置决定。",
+    requestHandles: ["R1", "R2", "R3"],
+  },
+  {
+    section: "checklist",
+    kind: "suggestion",
+    text: "回归验证：普通成员导出不含他人客户；团队负责人导出范围与客户列表一致；任何角色的导出文件都不含手机号。",
+    evidence: [{ handle: h("ev_member_own") }, { handle: h("ev_phone_restricted") }],
+    reasoning: "覆盖权限与受限字段两条既有规则，是统一导出最容易回归的地方。",
+  },
+  {
     section: "risk",
     kind: "unknown",
     text: "大数据量导出的容量与是否需要异步导出无法判断。",

@@ -70,3 +70,11 @@ export function fmtDate(d: Date | string | null | undefined): string {
   const date = typeof d === "string" ? new Date(d) : d;
   return date.toLocaleString("zh-CN", { hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
+
+export const NODE_TYPE: Record<string, string> = {
+  module: "模块",
+  interface: "接口",
+  data_object: "数据对象",
+  role: "角色/权限",
+  business_party: "业务方",
+};

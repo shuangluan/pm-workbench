@@ -32,6 +32,9 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
       <section className="section" id="analyses">
         <div className="section-head">
           <h2>分析任务</h2>
+          <Link href={`/start?product=${productId}`} className="btn btn-primary">
+            快速开始一次分析
+          </Link>
         </div>
         {analyses.length ? (
           <ul className="list">
@@ -113,7 +116,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
                   <th scope="col">名称</th>
                   <th scope="col">当前版本</th>
                   <th scope="col">状态</th>
-                  <th scope="col">字符</th>
+                  <th scope="col">大小</th>
                   <th scope="col">更新</th>
                 </tr>
               </thead>
@@ -122,10 +125,11 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
                   <tr key={s.id}>
                     <td>
                       <Link href={`${base}/sources/${s.id}`}>{s.name}</Link>
+                      {s.kind === "image" ? <span className="tag">截图</span> : s.kind === "transcript" ? <span className="tag">转写</span> : null}
                     </td>
                     <td>v{s.version}{s.versionCount > 1 ? <span className="muted">（共 {s.versionCount} 版）</span> : null}</td>
                     <td>{VALIDITY[s.validity]}</td>
-                    <td>{s.charCount.toLocaleString()}</td>
+                    <td>{s.kind === "image" ? `${Math.ceil((s.byteSize ?? 0) / 1024)} KB` : `${s.charCount.toLocaleString()} 字符`}</td>
                     <td>{fmtDate(s.createdAt)}</td>
                   </tr>
                 ))}

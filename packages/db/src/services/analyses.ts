@@ -37,6 +37,7 @@ export async function getAnalysis(db: Db, productId: string, analysisId: string)
       versionId: sourceVersions.id,
       sourceId: sources.id,
       name: sources.name,
+      kind: sources.kind,
       version: sourceVersions.version,
       validity: sourceVersions.validity,
       charCount: sourceVersions.charCount,
@@ -137,4 +138,26 @@ export async function analysisDeletionPreview(db: Db, productId: string, analysi
   const analysis = await getAnalysis(db, productId, analysisId);
   const reports = await db.select({ id: reportVersions.id }).from(reportVersions).where(eq(reportVersions.analysisId, analysisId));
   return { analysis, reports: reports.length };
+}
+
+/** Add to the scope without removing anything (used when items are created from within an analysis). */
+export async function appendToScope(db: Db, productId: string, analysisId: string, add: { requestIds?: string[]; sourceVersionIds?: string[] }) {
+  const current = await getAnalysis(db, productId, analysisId);
+  assertEditable(current.status);
+  const newRequests = (add.requestIds ?? []).filter((id) => !current.requestIds.includes(id));
+  const have = new Set(current.selectedSources.map((s) => s.versionId));
+  const newVersions = [...new Set(add.sourceVersionIds ?? [])].filter((id) => !have.has(id));
+  if (!newRequests.length && !newVersions.length) return;
+  await db.transaction(async (tx) => {
+    if (newRequests.length) {
+      await tx
+        .insert(analysisRequests)
+        .values(newRequests.map((requestId, i) => ({ productId, analysisId, requestId, position: current.requestIds.length + i })));
+    }
+    if (newVersions.length) await tx.insert(analysisSources).values(newVersions.map((sourceVersionId) => ({ productId, analysisId, sourceVersionId })));
+    await tx
+      .update(analyses)
+      .set({ revision: current.revision + 1, updatedAt: new Date() })
+      .where(eq(analyses.id, analysisId));
+  });
 }

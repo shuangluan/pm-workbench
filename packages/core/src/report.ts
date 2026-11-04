@@ -97,6 +97,39 @@ export function reportStatus(snapshot: ReportSnapshot): ReportStatus {
   return openItems(snapshot).length ? "reviewed_open" : "reviewed_clear";
 }
 
+export interface NextStep {
+  kind: "decide" | "supply" | "verify" | "review";
+  text: string;
+  /** Evidence handles behind the step, so it stays traceable. */
+  refs: string[];
+}
+
+/**
+ * Turn reviewed claims into an action list (no model involved): conflicts need
+ * a decision, unknowns need material or a person, confirmed dependencies need
+ * verification, suggestions need review. Rejected claims are left out.
+ */
+export function nextSteps(snapshot: ReportSnapshot, lang: Lang = "zh"): NextStep[] {
+  const steps: NextStep[] = [];
+  const live = snapshot.claims.filter((c) => c.review !== "rejected");
+  const refs = (c: ClaimRecord) => c.evidence.map((e) => e.handle);
+  for (const c of live.filter((c) => c.section === "conflict")) steps.push({ kind: "decide", text: c.text, refs: refs(c) });
+  for (const q of snapshot.openQuestions) steps.push({ kind: "decide", text: q, refs: [] });
+  for (const c of live.filter((c) => c.kind === "unknown")) steps.push({ kind: "supply", text: c.missing ? `${c.missing}（${c.text}）` : c.text, refs: refs(c) });
+  for (const c of live.filter((c) => c.evidenceValidity !== "valid")) {
+    steps.push({ kind: "supply", text: `${L[lang].recheck}${c.text}`, refs: refs(c) });
+  }
+  if (snapshot.impact) {
+    const nodes = new Map(snapshot.impact.nodes.map((n) => [n.id, n]));
+    const edges = new Map(snapshot.impact.edges.map((e) => [e.id, e]));
+    for (const hit of snapshot.impact.result.hits) steps.push({ kind: "verify", text: verificationQuestion(hit, nodes, edges, lang), refs: [] });
+    if (isTruncated(snapshot.impact.result)) steps.push({ kind: "verify", text: L[lang].truncated, refs: [] });
+  }
+  for (const c of live.filter((c) => c.section === "checklist")) steps.push({ kind: "verify", text: c.text, refs: refs(c) });
+  for (const c of live.filter((c) => c.kind === "suggestion" && c.section !== "checklist")) steps.push({ kind: "review", text: c.text, refs: refs(c) });
+  return steps;
+}
+
 const L = {
   zh: {
     status: { draft: "草稿：仍有待核对条目", reviewed_open: "已核对（有未决项）", reviewed_clear: "已核对（无已知未决项）" },
@@ -138,11 +171,15 @@ const L = {
     skipped: "未参与传播的关系（未确认、已失效或不可传播类型）",
     verify: "建议验证",
     open: "未决事项",
+    next: "建议的下一步",
+    nextNote: "由已核对条目和已确认依赖自动整理，是行动清单而不是结论；请按实际情况取舍。",
+    nextKinds: { decide: "需要决策", supply: "需要补充资料或确认", verify: "需要验证", review: "需要评审的建议" },
     none: "（无）",
     decisions: "人工决策",
     reason: "理由",
     index: "来源索引",
     deleted: "［来源已删除，原句不再保留］",
+    recheck: "资料已更新或删除，复核：",
     stale: "待复核",
     sourceDeleted: "来源已删除",
     meta: "生成信息",
@@ -194,11 +231,15 @@ const L = {
     skipped: "Relations not propagated (unconfirmed, invalid or non-propagating type)",
     verify: "Verify",
     open: "Open items",
+    next: "Suggested next steps",
+    nextNote: "Assembled from reviewed claims and confirmed dependencies. An action list, not conclusions; adapt as needed.",
+    nextKinds: { decide: "Decisions needed", supply: "Material to supply or confirm", verify: "To verify", review: "Suggestions to review" },
     none: "(none)",
     decisions: "Decisions",
     reason: "reason",
     index: "Source index",
     deleted: "[source deleted; quote no longer kept]",
+    recheck: "Source changed or deleted; re-check: ",
     stale: "needs review",
     sourceDeleted: "source deleted",
     meta: "Generation info",
@@ -327,6 +368,17 @@ export function renderReportMarkdown(snapshot: ReportSnapshot, lang: Lang = "zh"
       if (section !== "impact_confirmed") out.push(`### ${t.sections[section]}`, "");
       out.push(...list.map((c) => claimLine(c, lang)), "");
     }
+  }
+
+  const steps = nextSteps(snapshot, lang);
+  out.push(`## ${t.next}`, "", `_${t.nextNote}_`, "");
+  if (!steps.length) out.push(t.none, "");
+  for (const kind of ["decide", "supply", "verify", "review"] as const) {
+    const list = steps.filter((s) => s.kind === kind);
+    if (!list.length) continue;
+    out.push(`### ${t.nextKinds[kind]}`, "");
+    list.forEach((s, i) => out.push(`${i + 1}. ${escapeInline(s.text)}${s.refs.length ? ` — ${s.refs.map((r) => `[${r}]`).join(" ")}` : ""}`));
+    out.push("");
   }
 
   out.push(`## ${t.open}`, "", ...(open.length ? open.map((o) => `- ${escapeInline(o.text)}`) : [t.none]), "");

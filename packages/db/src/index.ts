@@ -10,3 +10,6 @@ export * from "./services/claims";
 export * from "./services/reports";
 export * from "./services/example";
 export * from "./services/portability";
+export * from "./services/media";
+export * from "./services/memory";
+export * from "./services/quickstart";

@@ -1,7 +1,8 @@
 import { getProduct } from "@pew/db";
 import Link from "next/link";
-import { addSourcesAction } from "@/app/actions";
+import { addSourcesAction, uploadImagesAction } from "@/app/actions";
 import { Form } from "@/components/Form";
+import { ScreenshotUploadForm } from "@/components/ScreenshotUploadForm";
 import { getDb } from "@/lib/db";
 import { found } from "@/lib/found";
 
@@ -18,6 +19,11 @@ export default async function NewSourcePage({ params }: { params: Promise<{ prod
         支持 UTF-8 的 TXT / Markdown 或直接粘贴文字。单文件不超过 2 MB、100,000 字符，一次最多 10 个文件。内容相同的资料会复用，不会重复保存；上传不会调用 AI。
       </p>
       <section className="card">
+        <h2>聊天截图</h2>
+        <ScreenshotUploadForm action={uploadImagesAction} productId={productId} />
+      </section>
+      <section className="card">
+        <h2>文字资料</h2>
         <Form
           action={addSourcesAction}
           submit="保存"

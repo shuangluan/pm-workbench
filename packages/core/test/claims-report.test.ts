@@ -153,7 +153,7 @@ describe("report", () => {
     expect(md).toContain("Draft: claims still pending review");
     expect(md).not.toContain("统一的导出入口");
     expect(md).toContain("销售提出者是否为团队负责人？");
-    expect(md).toContain("## Acceptance suggestions\n\n(no reviewed content)");
+    expect(md).toMatch(/## Acceptance suggestions\n\n- \*\*\[Suggestion\]\*\* 回归验证/);
   });
 });
 
@@ -179,5 +179,38 @@ describe("runs", () => {
     expect(estimateCost({ inputTokens: 1000 }, { inputPerMillion: 3, outputPerMillion: 15 })).toBeNull();
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0 }, {})).toBeNull();
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, { inputPerMillion: 3, outputPerMillion: 15 })).toBe(18);
+  });
+});
+
+describe("next steps", () => {
+  it("turns conflicts, unknowns, dependencies and suggestions into actions", async () => {
+    const { nextSteps } = await import("@pew/core");
+    const snap = exampleSnapshot();
+    snap.claims = snap.claims.map((c, i) => (i === 3 ? { ...c, review: "rejected", rejectReason: "irrelevant" } : c));
+    const steps = nextSteps(snap);
+    // Only the rejected conflict disappears; the config suggestion still mentions phone numbers.
+    expect(steps.some((s) => s.kind === "decide" && s.text.includes("手机号"))).toBe(false);
+    expect(steps.filter((s) => s.kind === "decide").map((s) => s.text)).toEqual([
+      expect.stringContaining("销售要求导出整个团队的客户"),
+      "销售提出者是否为团队负责人？",
+    ]);
+    expect(steps.find((s) => s.kind === "supply")!.text).toContain("需要导出模块负责人提供");
+    expect(steps.filter((s) => s.kind === "verify").map((s) => s.text)).toEqual([
+      expect.stringMatching(/^导出模块调用权限服务/),
+      expect.stringMatching(/^报表模块经由导出模块间接依赖权限服务/),
+      expect.stringMatching(/^回归验证/),
+    ]);
+    expect(steps.filter((s) => s.kind === "review").map((s) => s.text)).toEqual([
+      expect.stringContaining("统一的导出入口"),
+      expect.stringContaining("按业务方配置导出范围"),
+    ]);
+  });
+
+  it("renders the section with refs and an explicit note that it is not a conclusion", () => {
+    const md = renderReportMarkdown(exampleSnapshot());
+    expect(md).toContain("## 建议的下一步");
+    expect(md).toContain("### 需要决策");
+    expect(md).toContain("是行动清单而不是结论");
+    expect(md).toMatch(/1\. 销售要求导出整个团队的客户.* — \[E\d\] \[E\d\]/);
   });
 });

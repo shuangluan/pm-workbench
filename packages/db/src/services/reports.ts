@@ -16,6 +16,7 @@ import { notFound } from "../errors";
 import { analyses, decisions, evidences, reportVersions, sourceVersions, sources } from "../schema";
 import { getAnalysis, setAnalysisStatus } from "./analyses";
 import { listClaims } from "./claims";
+import { analysisImpact } from "./memory";
 import { listRequests } from "./requests";
 
 export const TEMPLATE_VERSION = "report-v0.1";
@@ -63,6 +64,7 @@ export async function buildSnapshot(db: Db, productId: string, analysisId: strin
     .from(decisions)
     .where(and(eq(decisions.productId, productId), eq(decisions.analysisId, analysisId)));
   const modelRun = claimViews.find((c) => c.taskType !== "manual");
+  const impact = await analysisImpact(db, productId, analysis.changeNodeIds);
 
   return {
     title: analysis.title,
@@ -79,6 +81,7 @@ export async function buildSnapshot(db: Db, productId: string, analysisId: strin
     sources: analysis.selectedSources.map((s) => ({ name: s.name, version: s.version, validity: s.validity, sourceVersionId: s.versionId })),
     coverage: [],
     claims: claimsForReport,
+    impact: impact ?? undefined,
     evidence: registry.entries().map((e) => {
       const row = evRows.find((r) => r.ev.id === e.evidenceId)!;
       return {

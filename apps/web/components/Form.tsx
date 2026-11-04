@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import { initialFormState, type FormState } from "@/lib/form-state";
 
 export interface Option {
@@ -24,6 +24,10 @@ export interface Field {
   maxLength?: number;
   autoComplete?: string;
   mono?: boolean;
+  /** Only render (and submit) this field while a select field has one of these values. */
+  showWhen?: { field: string; in: string[] };
+  /** Render inside the collapsed "more options" section. */
+  advanced?: boolean;
 }
 
 type Action = (state: FormState, data: FormData) => Promise<FormState>;
@@ -35,6 +39,8 @@ export function Form({
   tone = "primary",
   inline = false,
   confirm,
+  advancedLabel = "更多选项",
+  advancedOpen = false,
 }: {
   action: Action;
   fields: Field[];
@@ -42,12 +48,104 @@ export function Form({
   tone?: "primary" | "secondary" | "danger";
   inline?: boolean;
   confirm?: string;
+  advancedLabel?: string;
+  advancedOpen?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, initialFormState);
   // Many forms share a page (one per claim), so ids must be unique per form.
   const uid = useId();
   const value = (f: Field) => state.values?.[f.name] ?? f.defaultValue;
+  const selectValues = () =>
+    Object.fromEntries(fields.filter((f) => f.type === "select").map((f) => [f.name, String(value(f) ?? f.options?.[0]?.value ?? "")]));
+  // Current select values, for fields shown only for some choices.
+  const [watch, setWatch] = useState<Record<string, string>>(selectValues);
+  // After a submit the form remounts with echoed values; resync the watched selects.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setWatch(selectValues()), [state.seq]);
+  const visible = (f: Field) => !f.showWhen || f.showWhen.in.includes(watch[f.showWhen.field] ?? "");
 
+  function renderField(f: Field) {
+    const id = `${uid}-${f.name}`;
+    const v = value(f);
+    if (f.type === "hidden") return <input key={f.name} type="hidden" name={f.name} value={String(f.defaultValue ?? "")} />;
+    const label = f.label ? (
+      <label htmlFor={f.type === "checkboxes" ? undefined : id} className="label">
+        {f.label}
+        {f.required ? <span aria-hidden="true"> *</span> : null}
+      </label>
+    ) : null;
+    let control: React.ReactNode;
+    if (f.type === "textarea") {
+      control = (
+        <textarea
+          id={id}
+          name={f.name}
+          rows={f.rows ?? 6}
+          defaultValue={typeof v === "string" ? v : ""}
+          required={f.required}
+          placeholder={f.placeholder}
+          maxLength={f.maxLength}
+          className={f.mono ? "mono" : undefined}
+        />
+      );
+    } else if (f.type === "select") {
+      control = (
+        <select
+          id={id}
+          name={f.name}
+          defaultValue={typeof v === "string" ? v : undefined}
+          required={f.required}
+          onChange={(e) => setWatch((w) => ({ ...w, [f.name]: e.target.value }))}
+        >
+          {f.options?.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      );
+    } else if (f.type === "checkboxes") {
+      const checked = new Set(Array.isArray(v) ? v : v ? [v] : []);
+      control = (
+        <fieldset className="checks" aria-label={f.label}>
+          {f.options?.length ? null : <p className="muted">（无可选项）</p>}
+          {f.options?.map((o) => (
+            <label key={o.value} className="check">
+              <input type="checkbox" name={f.name} value={o.value} defaultChecked={checked.has(o.value)} />
+              <span>
+                {o.label}
+                {o.hint ? <span className="muted"> · {o.hint}</span> : null}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      );
+    } else if (f.type === "file") {
+      control = <input id={id} type="file" name={f.name} multiple={f.multiple} accept={f.accept} required={f.required} />;
+    } else {
+      control = (
+        <input
+          id={id}
+          type={f.type}
+          name={f.name}
+          defaultValue={typeof v === "string" ? v : ""}
+          required={f.required}
+          placeholder={f.placeholder}
+          maxLength={f.maxLength}
+          autoComplete={f.autoComplete}
+        />
+      );
+    }
+    return (
+      <div key={f.name} className="field">
+        {label}
+        {control}
+        {f.help ? <p className="help">{f.help}</p> : null}
+      </div>
+    );
+  }
+
+  const advanced = fields.filter((f) => f.advanced && visible(f));
   return (
     <form
       key={state.seq}
@@ -57,80 +155,13 @@ export function Form({
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}
     >
-      {fields.map((f) => {
-        const id = `${uid}-${f.name}`;
-        const v = value(f);
-        if (f.type === "hidden") return <input key={f.name} type="hidden" name={f.name} value={String(f.defaultValue ?? "")} />;
-        const label = f.label ? (
-          <label htmlFor={f.type === "checkboxes" ? undefined : id} className="label">
-            {f.label}
-            {f.required ? <span aria-hidden="true"> *</span> : null}
-          </label>
-        ) : null;
-        let control: React.ReactNode;
-        if (f.type === "textarea") {
-          control = (
-            <textarea
-              id={id}
-              name={f.name}
-              rows={f.rows ?? 6}
-              defaultValue={typeof v === "string" ? v : ""}
-              required={f.required}
-              placeholder={f.placeholder}
-              maxLength={f.maxLength}
-              className={f.mono ? "mono" : undefined}
-            />
-          );
-        } else if (f.type === "select") {
-          control = (
-            <select id={id} name={f.name} defaultValue={typeof v === "string" ? v : undefined} required={f.required}>
-              {f.options?.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          );
-        } else if (f.type === "checkboxes") {
-          const checked = new Set(Array.isArray(v) ? v : v ? [v] : []);
-          control = (
-            <fieldset className="checks" aria-label={f.label}>
-              {f.options?.length ? null : <p className="muted">（无可选项）</p>}
-              {f.options?.map((o) => (
-                <label key={o.value} className="check">
-                  <input type="checkbox" name={f.name} value={o.value} defaultChecked={checked.has(o.value)} />
-                  <span>
-                    {o.label}
-                    {o.hint ? <span className="muted"> · {o.hint}</span> : null}
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          );
-        } else if (f.type === "file") {
-          control = <input id={id} type="file" name={f.name} multiple={f.multiple} accept={f.accept} required={f.required} />;
-        } else {
-          control = (
-            <input
-              id={id}
-              type={f.type}
-              name={f.name}
-              defaultValue={typeof v === "string" ? v : ""}
-              required={f.required}
-              placeholder={f.placeholder}
-              maxLength={f.maxLength}
-              autoComplete={f.autoComplete}
-            />
-          );
-        }
-        return (
-          <div key={f.name} className="field">
-            {label}
-            {control}
-            {f.help ? <p className="help">{f.help}</p> : null}
-          </div>
-        );
-      })}
+      {fields.filter((f) => !f.advanced && visible(f)).map(renderField)}
+      {advanced.length ? (
+        <details className="disclosure" open={advancedOpen}>
+          <summary>{advancedLabel}</summary>
+          <div className="form">{advanced.map(renderField)}</div>
+        </details>
+      ) : null}
       <div className="form-actions">
         <button type="submit" className={`btn btn-${tone}`} disabled={pending}>
           {pending ? "处理中…" : submit}

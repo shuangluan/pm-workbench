@@ -5,6 +5,12 @@ import { join } from "node:path";
 import { ingestBytes, MAX_FILE_BYTES, MAX_FILES_PER_UPLOAD, type ClaimKind, type ClaimSection, type RejectReason } from "@pew/core";
 import {
   addEvidenceByQuote,
+  addEvidenceBySpan,
+  addImageSource,
+  appendToScope,
+  quickStart,
+  saveTranscript,
+  setChangeNodes,
   addSource,
   addSourceVersion,
   addUserClaim,
@@ -179,7 +185,7 @@ export const addEvidenceAction = act(async (fd) => {
 export const deleteSourceAction = act(async (fd) => {
   if (str(fd, "confirm") !== "永久删除") throw new AppError("invalid_input", "请输入“永久删除”以确认");
   const productId = str(fd, "productId");
-  await deleteSourcePermanently(await getDb(), productId, str(fd, "sourceId"));
+  await deleteSourcePermanently(await getDb(), productId, str(fd, "sourceId"), config.dataDir);
   redirect(`/p/${productId}`);
 });
 
@@ -338,7 +344,143 @@ export const confirmImportAction = act(async (fd) => {
   } catch {
     throw new AppError("not_found", "待导入的文件已过期，请重新上传");
   }
-  const { productId } = await importProductArchive(await getDb(), bytes);
+  const { productId } = await importProductArchive(await getDb(), config.dataDir, bytes);
   rmSync(path, { force: true });
   redirect(`/p/${productId}`);
 });
+
+// Quick start and bulk entry
+
+interface RequestPayload {
+  party: string;
+  title?: string;
+  text: string;
+}
+
+function parseRequests(fd: FormData, sourceName: string): { party: string; originalText: string; sourceName: string; fields: RequestFields }[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(str(fd, "requests") || "[]");
+  } catch {
+    throw new AppError("invalid_input", "需求数据格式错误，请刷新后重试");
+  }
+  if (!Array.isArray(raw)) throw new AppError("invalid_input", "需求数据格式错误");
+  return (raw as RequestPayload[])
+    .filter((r) => typeof r?.text === "string" && r.text.trim())
+    .map((r) => ({
+      party: String(r.party ?? ""),
+      originalText: r.text,
+      sourceName,
+      fields: r.title ? { title: String(r.title) } : {},
+    }));
+}
+
+async function readDocs(fd: FormData) {
+  const out: { name: string; text: string; kind: "file" | "paste" }[] = [];
+  const notes: string[] = [];
+  const files = fd.getAll("docs").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length > MAX_FILES_PER_UPLOAD) throw new AppError("invalid_input", `资料一次最多 ${MAX_FILES_PER_UPLOAD} 个文件`);
+  for (const file of files) {
+    const name = file.name.replace(/[\u0000-\u001f]/g, "").slice(0, 200) || "未命名文件";
+    if (!/\.(txt|md|markdown)$/i.test(name)) {
+      notes.push(`“${name}”未保存：只支持 .txt / .md`);
+      continue;
+    }
+    const ingested = ingestBytes(new Uint8Array(await file.arrayBuffer()));
+    if (!ingested.ok) {
+      notes.push(`“${name}”未保存：${{ empty: "内容为空", too_large: "超过 2 MB", invalid_encoding: "不是 UTF-8 编码", too_many_chars: "超过 100,000 字符" }[ingested.code]}`);
+      continue;
+    }
+    out.push({ name, text: ingested.text, kind: "file" });
+  }
+  if (str(fd, "docText").trim()) out.push({ name: str(fd, "docName").trim() || "粘贴的资料", text: str(fd, "docText"), kind: "paste" });
+  return { docs: out, notes };
+}
+
+async function readImages(fd: FormData) {
+  return Promise.all(
+    fd
+      .getAll("images")
+      .filter((f): f is File => f instanceof File && f.size > 0)
+      .map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })),
+  );
+}
+
+export const quickStartAction = act(async (fd) => {
+  const { docs } = await readDocs(fd);
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await quickStart(await getDb(), config.dataDir, {
+    batchKey: str(fd, "batchKey"),
+    product: str(fd, "productId") ? { id: str(fd, "productId") } : { name: str(fd, "productName") },
+    analysis: { title: str(fd, "title"), goal: str(fd, "goal") },
+    requests: parseRequests(fd, `快速开始 ${today}`),
+    sources: docs,
+    images: await readImages(fd),
+  });
+  redirect(`/p/${r.productId}/a/${r.analysisId}?step=scope&created=1`);
+});
+
+export const bulkCreateRequestsAction = act(async (fd) => {
+  const db = await getDb();
+  const productId = str(fd, "productId");
+  const analysisId = str(fd, "analysisId");
+  const requests = parseRequests(fd, str(fd, "sourceName") || `批量录入 ${new Date().toISOString().slice(0, 10)}`);
+  if (!requests.length) throw new AppError("invalid_input", "没有可保存的需求");
+  const missing = requests.findIndex((r) => !r.party.trim());
+  if (missing !== -1) throw new AppError("invalid_input", `第 ${missing + 1} 条需求缺少业务方`);
+  const ids = await createRequests(db, productId, str(fd, "batchKey"), requests);
+  if (analysisId) {
+    await appendToScope(db, productId, analysisId, { requestIds: ids });
+    redirect(`/p/${productId}/a/${analysisId}?step=scope`);
+  }
+  redirect(`/p/${productId}#requests`);
+});
+
+export const uploadImagesAction = act(async (fd) => {
+  const db = await getDb();
+  const productId = str(fd, "productId");
+  const images = await readImages(fd);
+  if (!images.length) throw new AppError("invalid_input", "请先粘贴或选择截图");
+  const notes: string[] = [];
+  const versionIds: string[] = [];
+  for (const img of images) {
+    try {
+      const r = await addImageSource(db, config.dataDir, productId, img);
+      versionIds.push(r.versionId);
+      notes.push(r.status === "created" ? `“${img.name}”已保存` : `“${img.name}”与“${r.name}”相同，已复用`);
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      notes.push(`“${img.name}”未保存：${err.message}`);
+    }
+  }
+  const analysisId = str(fd, "analysisId");
+  if (analysisId && versionIds.length) await appendToScope(db, productId, analysisId, { sourceVersionIds: versionIds });
+  return notes.join("；");
+});
+
+export const saveTranscriptAction = act(async (fd) => {
+  const db = await getDb();
+  const productId = str(fd, "productId");
+  const r = await saveTranscript(db, productId, str(fd, "imageVersionId"), str(fd, "text"), "user");
+  const analysisId = str(fd, "analysisId");
+  if (analysisId) await appendToScope(db, productId, analysisId, { sourceVersionIds: [r.versionId] });
+  return r.status === "unchanged" ? "内容没有变化" : "转写已保存。可以在转写中划选引用，或从转写拆分需求。";
+});
+
+export const setChangeNodesAction = act(async (fd) => {
+  await setChangeNodes(await getDb(), str(fd, "productId"), str(fd, "analysisId"), strs(fd, "nodeIds"));
+  return "已保存，报告中的依赖检查将从这些节点开始";
+});
+
+/** Called from the source viewer when the user selects text. Not a form action. */
+export async function citeSelectionAction(input: { productId: string; versionId: string; start: number; end: number }): Promise<{ evidenceId?: string; error?: string }> {
+  await requireSession();
+  try {
+    const ev = await addEvidenceBySpan(await getDb(), input.productId, input.versionId, input.start, input.end);
+    revalidatePath("/", "layout");
+    return { evidenceId: ev.id };
+  } catch (err) {
+    if (err instanceof AppError) return { error: err.message };
+    throw err;
+  }
+}

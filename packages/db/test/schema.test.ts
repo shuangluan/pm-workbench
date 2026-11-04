@@ -80,8 +80,8 @@ describe("lifecycle constraints", () => {
   });
 
   it("a deleted source version keeps no text, and a live one must keep it", async () => {
-    await expect(exec(`UPDATE source_versions SET validity = 'source_deleted' WHERE id = 'svA'`)).rejects.toThrow(/source_versions_deleted_text/);
-    await expect(exec(`UPDATE source_versions SET text = NULL WHERE id = 'svA'`)).rejects.toThrow(/source_versions_deleted_text/);
+    await expect(exec(`UPDATE source_versions SET validity = 'source_deleted' WHERE id = 'svA'`)).rejects.toThrow(/source_versions_content/);
+    await expect(exec(`UPDATE source_versions SET text = NULL WHERE id = 'svA'`)).rejects.toThrow(/source_versions_content/);
   });
 
   it("the same idempotency key cannot create a second run", async () => {

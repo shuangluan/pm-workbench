@@ -12,7 +12,26 @@ export default async function ProductsPage() {
 
   return (
     <>
-      <h1>产品</h1>
+      <section className="hero">
+        <div>
+          <h1>把一堆需求整理成有依据的分析</h1>
+          <p>粘贴聊天记录、表格或截图，加上相关规则文档，整理出每条结论都能追溯到原文的分析报告，并列出需要决策、补充和验证的事项。所有内容只保存在本机。</p>
+        </div>
+        <div className="hero-actions">
+          <Link href="/start" className="btn btn-primary btn-large">
+            快速开始一次分析
+          </Link>
+          {example ? (
+            <Link href={`/p/${example.id}`} className="btn btn-secondary">
+              看看示例结果
+            </Link>
+          ) : (
+            <Form action={loadExampleAction} submit="先看示例结果" tone="secondary" fields={[]} />
+          )}
+        </div>
+      </section>
+
+      <h2>产品</h2>
       <p className="muted">每个产品有独立的资料、需求、局部记忆和分析。产品之间不会互相引用。</p>
 
       {products.length ? (
@@ -44,12 +63,12 @@ export default async function ProductsPage() {
           </table>
         </div>
       ) : (
-        <p className="empty">还没有产品。可以先看示例，或直接创建。</p>
+        <p className="empty">还没有产品。点“快速开始”时可以顺便新建。</p>
       )}
 
-      <div className="grid-2">
+      <details className="disclosure">
+        <summary>只创建一个空产品</summary>
         <section className="card">
-          <h2>创建产品</h2>
           <Form
             action={createProductAction}
             submit="创建"
@@ -59,22 +78,7 @@ export default async function ProductsPage() {
             ]}
           />
         </section>
-        <section className="card">
-          <h2>查看示例</h2>
-          <p>
-            合成的“批量导出”案例：三方需求、三份资料、相互冲突的规则和预置的分析条目。不需要模型密钥。
-          </p>
-          {example ? (
-            <p>
-              <Link href={`/p/${example.id}`} className="btn btn-secondary">
-                打开示例
-              </Link>
-            </p>
-          ) : (
-            <Form action={loadExampleAction} submit="载入示例" tone="secondary" fields={[]} />
-          )}
-        </section>
-      </div>
+      </details>
     </>
   );
 }

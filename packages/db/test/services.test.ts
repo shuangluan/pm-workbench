@@ -178,7 +178,7 @@ describe("claims, reports and deletion", () => {
     await addSourceVersion(db, p.id, src.sourceId, "# 字段\n\n手机号属于受限字段，需脱敏。\n");
     expect((await listClaims(db, p.id, a.id))[0]!.evidenceValidity).toBe("needs_review");
 
-    await deleteSourcePermanently(db, p.id, src.sourceId);
+    await deleteSourcePermanently(db, p.id, src.sourceId, dataDir);
     expect((await listClaims(db, p.id, a.id))[0]!.evidenceValidity).toBe("source_deleted");
     const { snapshot } = await getReportVersion(db, p.id, a.id, 1);
     const md = renderReportMarkdown(snapshot);
@@ -204,16 +204,16 @@ describe("example, export and import", () => {
     for (const c of claims) await reviewClaimById(db, id, c.id, { type: "accept" }, c.revision);
     await saveReportVersion(db, id, analysis!.id);
 
-    const { bytes } = await exportProduct(db, id);
+    const { bytes } = await exportProduct(db, dataDir, id);
     const files = Object.keys(unzipSync(bytes));
     expect(files).toContain("manifest.json");
     expect(files.some((f) => f.startsWith("texts/"))).toBe(true);
     expect(files.some((f) => f.startsWith("reports/"))).toBe(true);
 
-    const { productId, summary } = await importProductArchive(db, bytes);
+    const { productId, summary } = await importProductArchive(db, dataDir, bytes);
     expect(productId).not.toBe(id);
-    expect(summary.counts).toMatchObject({ requests: 3, claims: 5, report_versions: 1, system_edges: 3 });
-    const again = await exportProduct(db, productId);
+    expect(summary.counts).toMatchObject({ requests: 3, claims: 7, report_versions: 1, system_edges: 3 });
+    const again = await exportProduct(db, dataDir, productId);
     const before = inspectProductArchive(bytes);
     const after = inspectProductArchive(again.bytes);
     expect(after.summary.counts).toEqual(before.summary.counts);
@@ -226,7 +226,7 @@ describe("example, export and import", () => {
 
   it("rejects path traversal, tampering and unknown schema versions", async () => {
     const id = await loadExample(db);
-    const { bytes } = await exportProduct(db, id);
+    const { bytes } = await exportProduct(db, dataDir, id);
     const entries = unzipSync(bytes);
 
     const traversal = zipSync({ ...entries, "../evil.txt": strToU8("x") });
@@ -241,5 +241,114 @@ describe("example, export and import", () => {
     expect(() => inspectProductArchive(future)).toThrow(/不支持的导出格式版本 99/);
 
     expect(() => inspectProductArchive(strToU8("not a zip"))).toThrow(/无法读取/);
+  });
+});
+
+// A 1×1 PNG.
+const PNG = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+
+describe("screenshots and transcripts", () => {
+  it("stores by sniffed type, dedupes, and refuses SVG or renamed files", async () => {
+    const { addImageSource, readImage } = await import("@pew/db");
+    const p = await createProduct(db, { name: "P" });
+    const a = await addImageSource(db, dataDir, p.id, { name: "群聊.png", bytes: PNG });
+    expect(a.status).toBe("created");
+    expect((await addImageSource(db, dataDir, p.id, { name: "again.jpg", bytes: PNG })).status).toBe("duplicate");
+    expect((await readImage(db, dataDir, p.id, a.versionId)).mediaType).toBe("image/png");
+    expect(await code(addImageSource(db, dataDir, p.id, { name: "x.png", bytes: strToU8("<svg onload=alert(1)>") }))).toBe("invalid_input");
+    const other = await createProduct(db, { name: "Q" });
+    expect(await code(readImage(db, dataDir, other.id, a.versionId))).toBe("not_found");
+  });
+
+  it("keeps transcripts linked and versioned; deleting the image removes file and transcript", async () => {
+    const { addImageSource, saveTranscript, findTranscript, addEvidenceBySpan } = await import("@pew/db");
+    const { existsSync } = await import("node:fs");
+    const p = await createProduct(db, { name: "P" });
+    const img = await addImageSource(db, dataDir, p.id, { name: "群聊.png", bytes: PNG });
+    const t1 = await saveTranscript(db, p.id, img.versionId, "王运营：能导出筛选结果吗？");
+    const ev = await addEvidenceBySpan(db, p.id, t1.versionId, 4, 13);
+    expect(ev.quote).toBe("能导出筛选结果吗？");
+    const t2 = await saveTranscript(db, p.id, img.versionId, "王运营：能导出筛选结果吗？每周用。");
+    expect(t2.sourceId).toBe(t1.sourceId);
+    expect((await findTranscript(db, p.id, img.versionId))?.versionId).toBe(t2.versionId);
+
+    const [file] = (await listSources(db, p.id)).filter((s) => s.kind === "image");
+    const path = join(dataDir, "files", p.id);
+    expect(existsSync(path)).toBe(true);
+    await deleteSourcePermanently(db, p.id, file!.id, dataDir);
+    expect((await (await import("node:fs")).readdirSync(path)).length).toBe(0);
+    expect((await listSources(db, p.id)).every((s) => s.validity === "source_deleted")).toBe(true);
+  });
+
+  it("trims whitespace from selected ranges and rejects blank or invalid ones", async () => {
+    const { addEvidenceBySpan } = await import("@pew/db");
+    const p = await createProduct(db, { name: "P" });
+    const src = await addSource(db, p.id, { name: "规则", text: "第一行\n  仅本人可见。  \n" });
+    expect((await addEvidenceBySpan(db, p.id, src.versionId, 3, 14)).quote).toBe("仅本人可见。");
+    expect(await code(addEvidenceBySpan(db, p.id, src.versionId, 3, 6))).toBe("invalid_input");
+    expect(await code(addEvidenceBySpan(db, p.id, src.versionId, 5, 999))).toBe("invalid_input");
+  });
+});
+
+describe("quick start", () => {
+  it("creates everything with scope selected, and a resubmit returns the same analysis", async () => {
+    const { quickStart, getAnalysis } = await import("@pew/db");
+    const input = {
+      batchKey: crypto.randomUUID(),
+      product: { name: "客户平台" },
+      analysis: { title: "统一导出" },
+      requests: [
+        { party: "运营", originalText: "导出筛选结果" },
+        { party: "客服", originalText: "不要手机号" },
+      ],
+      sources: [{ name: "权限规则", text: "仅本人可见。", kind: "paste" as const }],
+      images: [{ name: "群聊.png", bytes: PNG }],
+    };
+    const r = await quickStart(db, dataDir, input);
+    const again = await quickStart(db, dataDir, input);
+    expect(again.analysisId).toBe(r.analysisId);
+    const a = await getAnalysis(db, r.productId, r.analysisId);
+    expect(a.requestIds).toHaveLength(2);
+    expect(a.selectedSources.map((s) => s.name).sort()).toEqual(["权限规则", "群聊.png"]);
+    expect(await listRequests(db, r.productId)).toHaveLength(2);
+  });
+
+  it("names the request that lacks a party", async () => {
+    const { quickStart } = await import("@pew/db");
+    const r = quickStart(db, dataDir, {
+      batchKey: crypto.randomUUID(),
+      product: { name: "P" },
+      analysis: { title: "A" },
+      requests: [{ party: "运营", originalText: "a" }, { party: " ", originalText: "b" }],
+      sources: [],
+      images: [],
+    });
+    await expect(r).rejects.toThrow("第 2 条需求缺少业务方");
+  });
+});
+
+describe("impact in reports", () => {
+  it("the example report includes the confirmed dependency check and next steps", async () => {
+    const id = await loadExample(db);
+    const [analysis] = await (await import("@pew/db")).listAnalyses(db, id);
+    await saveReportVersion(db, id, analysis!.id);
+    const md = renderReportMarkdown((await getReportVersion(db, id, analysis!.id, 1)).snapshot);
+    expect(md).toContain("**导出模块**（直接依赖，1）");
+    expect(md).toContain("### 需要验证");
+  });
+
+  it("round-trips screenshots through export and import", async () => {
+    const { addImageSource, readImage, listSources: ls } = await import("@pew/db");
+    const p = await createProduct(db, { name: "P" });
+    await addImageSource(db, dataDir, p.id, { name: "群聊.png", bytes: PNG });
+    const { bytes } = await exportProduct(db, dataDir, p.id);
+    const { productId } = await importProductArchive(db, dataDir, bytes);
+    const [img] = (await ls(db, productId)).filter((s) => s.kind === "image");
+    expect(Buffer.from((await readImage(db, dataDir, productId, img!.versionId)).bytes).equals(Buffer.from(PNG))).toBe(true);
+
+    const entries = unzipSync(bytes);
+    const imgPath = Object.keys(entries).find((k) => k.startsWith("files/"))!;
+    const forged = zipSync({ ...entries, [imgPath]: strToU8("<svg/>") });
+    expect(() => inspectProductArchive(forged)).toThrow(/校验和不一致/);
   });
 });

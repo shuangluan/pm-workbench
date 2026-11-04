@@ -22,6 +22,12 @@ export interface NewRequest {
   fields?: RequestFields;
 }
 
+/** First line of the verbatim text without a leading "speaker：" label, for display names. */
+function summaryLine(text: string): string {
+  const first = text.trim().split("\n")[0] ?? "";
+  return first.replace(/^[^：:\s]{1,16}[：:]\s*/, "").slice(0, 24);
+}
+
 function cleanFields(fields: RequestFields = {}): Record<string, string> {
   const out: Record<string, string> = {};
   for (const key of REQUEST_FIELDS) {
@@ -97,7 +103,7 @@ export async function createRequests(db: Db, productId: string, batchKey: string
         id: sourceId,
         productId,
         kind: "request_text",
-        name: `${party} · ${fields.title ?? item.originalText.trim().slice(0, 24)}`,
+        name: `${party} · ${fields.title ?? summaryLine(item.originalText)}`,
         originalUrl: item.originalUrl?.trim() || null,
       });
       const { evidenceId } = await storeVerbatim(tx, productId, sourceId, 1, item.originalText);

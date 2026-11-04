@@ -1,18 +1,21 @@
 // Product export / import (PRD F09, §8.2).
 //
 // Layout: manifest.json (format, schema version, counts, sha256 per file),
-// data/<table>.json, texts/<sourceVersionId>.txt, reports/<analysis>-v<n>.md.
+// data/<table>.json, texts/<sourceVersionId>.txt, files/<sourceVersionId>.<ext>
+// (screenshots), reports/<analysis>-v<n>.md.
 // Source text lives only in texts/, and import checks it against the stored
 // content hash. Import always creates a new product with fresh ids; it never
 // overwrites an existing one. No keys, sessions or instance data are exported.
 
 import { renderReportMarkdown, sha256, type ReportSnapshot } from "@pew/core";
+import { readFileSync } from "node:fs";
 import { eq, getTableColumns, type InferSelectModel } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import type { Db } from "../client";
 import { AppError, newId } from "../errors";
 import * as s from "../schema";
+import { removeStoredFile, sha256Bytes, sniffImage, storagePath, writeStoredFile } from "./media";
 import { getProduct } from "./products";
 
 export const EXPORT_FORMAT = "pew-product-export";
@@ -54,7 +57,7 @@ function productColumn(table: PgTable) {
   return (getTableColumns(table) as Record<string, ReturnType<typeof getTableColumns>[string]>).productId!;
 }
 
-export async function exportProduct(db: Db, productId: string): Promise<{ filename: string; bytes: Uint8Array }> {
+export async function exportProduct(db: Db, dataDir: string, productId: string): Promise<{ filename: string; bytes: Uint8Array }> {
   const product = await getProduct(db, productId);
   const files: Record<string, Uint8Array> = {};
   const counts: Record<string, number> = {};
@@ -64,7 +67,11 @@ export async function exportProduct(db: Db, productId: string): Promise<{ filena
     if (name === "source_versions") {
       rows = rows.map((r) => {
         if (typeof r.text === "string") files[`texts/${r.id}.txt`] = strToU8(r.text);
-        return { ...r, text: undefined };
+        if (typeof r.storageKey === "string") {
+          const ext = r.storageKey.split(".").pop();
+          files[`files/${r.id}.${ext}`] = new Uint8Array(readFileSync(storagePath(dataDir, r.storageKey)));
+        }
+        return { ...r, text: undefined, storageKey: undefined };
       });
     }
     if (name === "report_versions") {
@@ -83,14 +90,14 @@ export async function exportProduct(db: Db, productId: string): Promise<{ filena
     exportedAt: new Date().toISOString(),
     product: { id: product.id, name: product.name },
     counts,
-    files: Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, sha256(strFromU8(bytes))])),
+    files: Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, sha256Bytes(bytes)])),
   };
   files["manifest.json"] = strToU8(JSON.stringify(manifest, null, 1));
   const safeName = product.name.replace(/[^\p{L}\p{N}_-]+/gu, "-").slice(0, 60) || "product";
   return { filename: `${safeName}-${manifest.exportedAt.slice(0, 10)}.pew.zip`, bytes: zipSync(files, { level: 6 }) };
 }
 
-const ALLOWED_PATH = /^(manifest\.json|data\/[a-z_]+\.json|texts\/[A-Za-z0-9_]+\.txt|reports\/[A-Za-z0-9_]+-v\d+\.md)$/;
+const ALLOWED_PATH = /^(manifest\.json|data\/[a-z_]+\.json|texts\/[A-Za-z0-9_]+\.txt|files\/[A-Za-z0-9_]+\.(png|jpg|webp|gif)|reports\/[A-Za-z0-9_]+-v\d+\.md)$/;
 
 const reject = (message: string, details: Record<string, unknown> = {}) => new AppError("import_rejected", message, details);
 
@@ -105,6 +112,7 @@ interface ParsedArchive {
   product: Row;
   tables: Record<TableName, Row[]>;
   texts: Map<string, string>;
+  images: Map<string, Uint8Array>;
 }
 
 /** Validates the archive completely without touching the database. */
@@ -147,7 +155,7 @@ export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
   for (const path of Object.keys(entries)) {
     if (path === "manifest.json") continue;
     if (!listed.has(path)) throw reject("导入包含有清单外的文件", { path });
-    if (sha256(strFromU8(entries[path]!)) !== manifest.files[path]) throw reject("文件校验和不一致", { path });
+    if (sha256Bytes(entries[path]!) !== manifest.files[path]) throw reject("文件校验和不一致", { path });
   }
   for (const path of listed) if (!entries[path]) throw reject("清单中的文件缺失", { path });
 
@@ -169,8 +177,17 @@ export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
     tables[name] = rows as Row[];
   }
   const texts = new Map<string, string>();
+  const images = new Map<string, Uint8Array>();
   for (const v of tables.source_versions) {
     if (v.validity === "source_deleted") continue;
+    if (typeof v.mediaType === "string") {
+      const path = Object.keys(entries).find((p) => p.startsWith(`files/${v.id}.`));
+      const bytes = path ? entries[path] : undefined;
+      if (!bytes) throw reject("缺少截图文件", { sourceVersionId: v.id });
+      if (sniffImage(bytes) !== v.mediaType || sha256Bytes(bytes) !== v.contentHash) throw reject("截图与记录的类型或哈希不一致", { sourceVersionId: v.id });
+      images.set(v.id as string, bytes);
+      continue;
+    }
     const bytes = entries[`texts/${v.id}.txt`];
     if (!bytes) throw reject("缺少资料原文", { sourceVersionId: v.id });
     const text = strFromU8(bytes);
@@ -186,6 +203,7 @@ export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
     product,
     tables,
     texts,
+    images,
   };
 }
 
@@ -219,40 +237,53 @@ function reviveRow(table: PgTable, row: Row): Row {
   return out;
 }
 
-export async function importProductArchive(db: Db, zip: Uint8Array): Promise<{ productId: string; summary: ArchiveSummary }> {
+export async function importProductArchive(db: Db, dataDir: string, zip: Uint8Array): Promise<{ productId: string; summary: ArchiveSummary }> {
   const parsed = inspectProductArchive(zip);
   const { ids, walk } = remapper(parsed);
   const productId = ids.get(parsed.product.id as string)!;
 
   // Batch keys are free-form and may embed old ids; each batch gets a fresh key.
   const batchKeys = new Map<string, string>();
+  // Screenshots are written first under their new ids and removed again if the insert fails.
+  const storageKeys = new Map<string, string>();
+  for (const [oldId, bytes] of parsed.images) {
+    storageKeys.set(oldId, writeStoredFile(dataDir, productId, ids.get(oldId)!, sniffImage(bytes)!, bytes));
+  }
 
-  await db.transaction(async (tx) => {
-    await tx.insert(s.products).values({
-      id: productId,
-      name: `${String(parsed.product.name).slice(0, 100)}（导入）`,
-      description: String(parsed.product.description ?? ""),
-      isExample: false,
-    });
-    for (const [name, table] of Object.entries(TABLES) as [TableName, PgTable][]) {
-      const rows = parsed.tables[name].map((raw) => {
-        const row = walk(raw) as Row;
-        if (name === "source_versions") row.text = parsed.texts.get(raw.id as string) ?? null;
-        if (name === "requests" && typeof raw.batchKey === "string") {
-          if (!batchKeys.has(raw.batchKey)) batchKeys.set(raw.batchKey, `import:${crypto.randomUUID()}`);
-          row.batchKey = batchKeys.get(raw.batchKey);
-        }
-        if (name === "analysis_runs") {
-          // Idempotency keys are global; manual runs stay discoverable by their analysis.
-          row.idempotencyKey = String(raw.idempotencyKey).startsWith("manual:") ? `manual:${row.analysisId}` : `import:${row.id}`;
-          if (row.status === "queued" || row.status === "running") row.status = "interrupted";
-        }
-        return reviveRow(table, row);
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(s.products).values({
+        id: productId,
+        name: `${String(parsed.product.name).slice(0, 100)}（导入）`,
+        description: String(parsed.product.description ?? ""),
+        isExample: false,
       });
-      for (let i = 0; i < rows.length; i += 500) {
-        await tx.insert(table).values(rows.slice(i, i + 500) as InferSelectModel<typeof table>[]);
+      for (const [name, table] of Object.entries(TABLES) as [TableName, PgTable][]) {
+        const rows = parsed.tables[name].map((raw) => {
+          const row = walk(raw) as Row;
+          if (name === "source_versions") {
+            row.text = parsed.texts.get(raw.id as string) ?? null;
+            row.storageKey = storageKeys.get(raw.id as string) ?? null;
+          }
+          if (name === "requests" && typeof raw.batchKey === "string") {
+            if (!batchKeys.has(raw.batchKey)) batchKeys.set(raw.batchKey, `import:${crypto.randomUUID()}`);
+            row.batchKey = batchKeys.get(raw.batchKey);
+          }
+          if (name === "analysis_runs") {
+            // Idempotency keys are global; manual runs stay discoverable by their analysis.
+            row.idempotencyKey = String(raw.idempotencyKey).startsWith("manual:") ? `manual:${row.analysisId}` : `import:${row.id}`;
+            if (row.status === "queued" || row.status === "running") row.status = "interrupted";
+          }
+          return reviveRow(table, row);
+        });
+        for (let i = 0; i < rows.length; i += 500) {
+          await tx.insert(table).values(rows.slice(i, i + 500) as InferSelectModel<typeof table>[]);
+        }
       }
-    }
-  });
+    });
+  } catch (err) {
+    for (const key of storageKeys.values()) removeStoredFile(dataDir, key);
+    throw err;
+  }
   return { productId, summary: parsed.summary };
 }

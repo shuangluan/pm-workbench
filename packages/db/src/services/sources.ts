@@ -5,6 +5,7 @@ import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "../client";
 import { AppError, newId, notFound } from "../errors";
 import { analysisRuns, claimEvidences, claims, evidences, reportVersions, sourceVersions, sources } from "../schema";
+import { removeStoredFile } from "./media";
 import { touchProduct } from "./products";
 
 const INGEST_MESSAGES: Record<Exclude<IngestResult, { ok: true }>["code"], string> = {
@@ -125,6 +126,10 @@ export async function listSources(db: Db, productId: string) {
       version: sourceVersions.version,
       validity: sourceVersions.validity,
       charCount: sourceVersions.charCount,
+      mediaType: sourceVersions.mediaType,
+      byteSize: sourceVersions.byteSize,
+      derivedFromVersionId: sourceVersions.derivedFromVersionId,
+      transcribedBy: sourceVersions.transcribedBy,
       createdAt: sourceVersions.createdAt,
     })
     .from(sources)
@@ -175,27 +180,24 @@ export async function getVersionWithEvidence(db: Db, productId: string, versionI
   };
 }
 
-/** Cite by pasting the exact sentence. Ambiguous quotes are refused rather than guessed. */
-export async function addEvidenceByQuote(db: Db | Tx, productId: string, versionId: string, quote: string) {
+async function citableVersion(db: Db | Tx, productId: string, versionId: string) {
   const [version] = await db
     .select()
     .from(sourceVersions)
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, versionId)));
   if (!version) throw notFound("资料版本");
   if (version.validity !== "valid" || version.text === null) {
-    throw new AppError("invalid_input", "只能在当前有效版本中添加引用");
+    throw new AppError("invalid_input", "只能在当前有效的文字版本中添加引用");
   }
-  const trimmed = quote.trim();
-  if (!trimmed) throw new AppError("invalid_input", "引用原句不能为空");
-  if (charCount(trimmed) > 2_000) throw new AppError("invalid_input", "单条引用最多 2,000 字符");
-  const hits = findQuote(version.text, trimmed);
-  if (!hits.length) throw new AppError("not_found", "在该版本中找不到这段原句，请直接从原文复制");
-  if (hits.length > 1) throw new AppError("ambiguous", `这段文字在原文中出现了 ${hits.length} 次，请多选几个字使其唯一`, { occurrences: hits.length });
-  const span = hits[0]!;
+  return { ...version, text: version.text };
+}
+
+async function insertEvidence(db: Db | Tx, productId: string, version: { id: string; text: string }, span: { start: number; end: number }) {
+  if (charCount(version.text.slice(span.start, span.end)) > 2_000) throw new AppError("invalid_input", "单条引用最多 2,000 字符");
   const [existing] = await db
     .select()
     .from(evidences)
-    .where(and(eq(evidences.sourceVersionId, versionId), eq(evidences.charStart, span.start), eq(evidences.charEnd, span.end)));
+    .where(and(eq(evidences.sourceVersionId, version.id), eq(evidences.charStart, span.start), eq(evidences.charEnd, span.end)));
   if (existing) return existing;
   const ev = makeEvidence(newId("ev"), { id: version.id, productId, text: version.text, validity: "valid" }, span);
   const [row] = await db
@@ -203,7 +205,7 @@ export async function addEvidenceByQuote(db: Db | Tx, productId: string, version
     .values({
       id: ev.id,
       productId,
-      sourceVersionId: versionId,
+      sourceVersionId: version.id,
       charStart: ev.start,
       charEnd: ev.end,
       lineStart: ev.lineStart,
@@ -213,6 +215,31 @@ export async function addEvidenceByQuote(db: Db | Tx, productId: string, version
     })
     .returning();
   return row!;
+}
+
+/** Cite by pasting the exact sentence. Ambiguous quotes are refused rather than guessed. */
+export async function addEvidenceByQuote(db: Db | Tx, productId: string, versionId: string, quote: string) {
+  const version = await citableVersion(db, productId, versionId);
+  const trimmed = quote.trim();
+  if (!trimmed) throw new AppError("invalid_input", "引用原句不能为空");
+  const hits = findQuote(version.text, trimmed);
+  if (!hits.length) throw new AppError("not_found", "在该版本中找不到这段原句，请直接从原文复制");
+  if (hits.length > 1) throw new AppError("ambiguous", `这段文字在原文中出现了 ${hits.length} 次，请多选几个字使其唯一`, { occurrences: hits.length });
+  return insertEvidence(db, productId, version, hits[0]!);
+}
+
+/** Cite a range selected in the viewer. Surrounding whitespace is trimmed off the span. */
+export async function addEvidenceBySpan(db: Db | Tx, productId: string, versionId: string, start: number, end: number) {
+  const version = await citableVersion(db, productId, versionId);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > version.text.length || start >= end) {
+    throw new AppError("invalid_input", "选择的范围无效，请重新选择");
+  }
+  let s = start;
+  let e = end;
+  while (s < e && /\s/.test(version.text[s]!)) s++;
+  while (e > s && /\s/.test(version.text[e - 1]!)) e--;
+  if (s === e) throw new AppError("invalid_input", "选择的范围只有空白");
+  return insertEvidence(db, productId, version, { start: s, end: e });
 }
 
 async function evidenceIdsOfSource(db: Db | Tx, productId: string, sourceId: string) {
@@ -263,9 +290,15 @@ export const DELETED_PLACEHOLDER = "［来源已删除，原句不再保留］";
  * database keeps them, including saved report snapshots. The rows stay as
  * tombstones so history shows that something was deleted, and when.
  */
-export async function deleteSourcePermanently(db: Db, productId: string, sourceId: string) {
-  await getSource(db, productId, sourceId);
+export async function deleteSourcePermanently(db: Db, productId: string, sourceId: string, dataDir: string): Promise<void> {
+  const source = await getSource(db, productId, sourceId);
   const now = new Date();
+  // Text read from a deleted screenshot goes with it.
+  const derived = await db
+    .selectDistinct({ sourceId: sourceVersions.sourceId })
+    .from(sourceVersions)
+    .where(and(eq(sourceVersions.productId, productId), inArray(sourceVersions.derivedFromVersionId, source.versions.map((v) => v.id).concat("-"))));
+  for (const d of derived) await deleteSourcePermanently(db, productId, d.sourceId, dataDir);
   await db.transaction(async (tx) => {
     const versionIds = (
       await tx
@@ -319,6 +352,7 @@ export async function deleteSourcePermanently(db: Db, productId: string, sourceI
       await tx.update(reportVersions).set({ snapshot: snap }).where(eq(reportVersions.id, report.id));
     }
   });
+  for (const v of source.versions) removeStoredFile(dataDir, v.storageKey);
   await touchProduct(db, productId);
 }
 
