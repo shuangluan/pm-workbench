@@ -5,16 +5,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1 --port ${PORT:-3210}",
+    "dev": "tsx ../../scripts/first-run.ts && next dev --hostname 127.0.0.1 --port ${PORT:-3210}",
     "build": "next build",
-    "start": "next start --hostname ${PEW_BIND:-127.0.0.1} --port ${PORT:-3210}"
+    "start": "tsx ../../scripts/first-run.ts && next start --hostname ${PEW_BIND:-127.0.0.1} --port ${PORT:-3210}"
   },
   "dependencies": {
     "@pew/core": "*",
     "@pew/db": "*",
     "next": "16.4.2",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "@pew/model-adapters": "*"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

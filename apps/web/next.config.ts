@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
-  transpilePackages: ["@pew/core", "@pew/db"],
+  transpilePackages: ["@pew/core", "@pew/db", "@pew/model-adapters"],
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
   poweredByHeader: false,
   experimental: {

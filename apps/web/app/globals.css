@@ -864,3 +864,25 @@ mark {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* M2: model runs */
+
+.ai-panel h2 {
+  margin-top: 0;
+}
+
+.run-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.4rem 0;
+}
+
+.run-line .tag {
+  margin-left: 0;
+}
+
+.banner p {
+  margin: 0.2rem 0;
+}

@@ -1,7 +1,8 @@
-import { findTranscript, getAnalysis, getProduct, getSource, getVersionWithEvidence, sourceDeletionPreview } from "@pew/db";
+import { findTranscript, getAnalysis, getModelConfig, getProduct, getSource, getVersionWithEvidence, listRuns, sourceDeletionPreview } from "@pew/db";
 import Link from "next/link";
-import { addEvidenceAction, addSourceVersionAction, deleteSourceAction, saveTranscriptAction } from "@/app/actions";
+import { addEvidenceAction, addSourceVersionAction, deleteSourceAction, saveTranscriptAction, startTranscribeAction } from "@/app/actions";
 import { Form } from "@/components/Form";
+import { RunWatcher } from "@/components/RunWatcher";
 import { SelectToCite } from "@/components/SelectToCite";
 import { getDb } from "@/lib/db";
 import { found } from "@/lib/found";
@@ -77,6 +78,9 @@ export default async function SourcePage({
     ? (await getVersionWithEvidence(db, productId, version.derivedFromVersionId)).version
     : null;
   const keep = analysis ? `analysis=${analysis.id}` : "";
+  const model = isImage ? await getModelConfig(db) : null;
+  const runs = analysis && isImage ? await listRuns(db, productId, analysis.id) : [];
+  const reading = runs.filter((r) => (r.status === "queued" || r.status === "running") && r.taskType === "transcribe_image");
 
   return (
     <>
@@ -143,7 +147,27 @@ export default async function SourcePage({
           {isImage && !deleted ? (
             <>
               <h2>转写</h2>
-              <p className="help">把截图里的对话打出来（或之后由模型读取），就能划选引用、拆分成需求。</p>
+              <p className="help">转写后就能划选引用、拆分成需求。模型转写可能有误，请对照原图检查。</p>
+              {analysis ? <RunWatcher url={`${base}/a/${analysis.id}/runs`} active={reading.map((r) => `${r.id}:${r.status}`).join()} /> : null}
+              {reading.length ? <p className="banner banner-info">模型正在读取截图…</p> : null}
+              {!transcript && !reading.length && model?.hasKey && analysis ? (
+                <Form
+                  action={startTranscribeAction}
+                  submit="用模型读取截图"
+                  fields={[
+                    { name: "productId", type: "hidden", defaultValue: productId },
+                    { name: "analysisId", type: "hidden", defaultValue: analysis.id },
+                    { name: "imageVersionId", type: "hidden", defaultValue: version.id },
+                    { name: "key", type: "hidden", defaultValue: crypto.randomUUID() },
+                  ]}
+                />
+              ) : null}
+              {!transcript && !model?.hasKey ? (
+                <p className="help">
+                  <Link href="/settings#model">配置模型</Link>后可以自动读取，否则请手动转写。
+                </p>
+              ) : null}
+              {!transcript && model?.hasKey && !analysis ? <p className="help">从分析页打开这张截图，可以用模型读取。</p> : null}
               {transcript ? (
                 <p>
                   <Link href={`${base}/sources/${transcript.sourceId}?${keep}`}>查看转写 v{transcript.version}</Link>

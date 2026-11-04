@@ -313,11 +313,13 @@ export const analysisRuns = pgTable(
     productId: productId(),
     analysisId: text("analysis_id").notNull(),
     /** `manual` holds claims the user wrote without a model call (M1 manual flow). */
-    taskType: text("task_type", { enum: ["manual", "split_requests", "extract_memory", "abstraction", "impact_inference"] }).notNull(),
+    taskType: text("task_type", { enum: ["manual", "split_requests", "transcribe_image", "extract_memory", "abstraction", "impact_inference"] }).notNull(),
     status: text("status", { enum: ["queued", "running", "succeeded", "failed", "canceled", "interrupted"] }).notNull().default("queued"),
     idempotencyKey: text("idempotency_key").notNull(),
     /** Frozen inputs: request ids, source version ids, memory versions, template version, model params. */
     inputSnapshot: jsonb("input_snapshot").notNull(),
+    /** Validated result that is not claims: coverage rows, split preview. */
+    output: jsonb("output"),
     retryOfRunId: text("retry_of_run_id"),
     attempts: integer("attempts").notNull().default(0),
     errorKind: text("error_kind"),
@@ -419,7 +421,8 @@ export const modelConfigs = pgTable("model_configs", {
   apiKeyHint: text("api_key_hint"),
   allowLocalHttp: boolean("allow_local_http").notNull().default(false),
   contextLimit: integer("context_limit").notNull(),
-  outputLimit: integer("output_limit").notNull().default(4000),
+  outputLimit: integer("output_limit").notNull().default(16000),
+  timeoutSeconds: integer("timeout_seconds").notNull().default(120),
   inputPricePerMillion: text("input_price_per_million"),
   outputPricePerMillion: text("output_price_per_million"),
   isActive: boolean("is_active").notNull().default(false),

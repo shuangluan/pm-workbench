@@ -57,7 +57,10 @@ export type ModelErrorKind =
   | "invalid_output"
   | "rate_limited"
   | "outcome_unknown"
-  | "budget_exceeded";
+  | "budget_exceeded"
+  | "truncated"
+  | "refused"
+  | "canceled";
 
 /** At most one automatic retry, and only where re-sending cannot double-charge silently. */
 export function shouldAutoRetry(kind: ModelErrorKind, attemptsSoFar: number): boolean {

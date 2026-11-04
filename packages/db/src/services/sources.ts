@@ -217,6 +217,19 @@ async function insertEvidence(db: Db | Tx, productId: string, version: { id: str
   return row!;
 }
 
+/**
+ * Evidence for a span a finished run cited. The run froze its input, so the
+ * version may have been superseded since; only a deleted version is refused.
+ */
+export async function ensureEvidence(db: Db | Tx, productId: string, versionId: string, start: number, end: number) {
+  const [version] = await db
+    .select()
+    .from(sourceVersions)
+    .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, versionId)));
+  if (!version || version.text === null) throw notFound("资料版本");
+  return { evidence: await insertEvidence(db, productId, { id: version.id, text: version.text }, { start, end }), validity: version.validity };
+}
+
 /** Cite by pasting the exact sentence. Ambiguous quotes are refused rather than guessed. */
 export async function addEvidenceByQuote(db: Db | Tx, productId: string, versionId: string, quote: string) {
   const version = await citableVersion(db, productId, versionId);
@@ -314,6 +327,40 @@ export async function deleteSourcePermanently(db: Db, productId: string, sourceI
         await tx.select({ id: claimEvidences.claimId }).from(claimEvidences).where(inArray(claimEvidences.evidenceId, evIds))
       ).map((c) => c.id);
       if (claimIds.length) await tx.update(claims).set({ evidenceValidity: "source_deleted" }).where(inArray(claims.id, claimIds));
+    }
+    // Frozen run inputs hold quotes too: remove them, and any preview derived from this text.
+    const deletedSet = new Set(versionIds);
+    const runs = await tx
+      .select({ id: analysisRuns.id, input: analysisRuns.inputSnapshot })
+      .from(analysisRuns)
+      .where(eq(analysisRuns.productId, productId));
+    for (const run of runs) {
+      const input = run.input as {
+        sourceVersionIds?: string[];
+        evidence?: { versionId: string }[];
+        requests?: { versionId?: string }[];
+        text?: string;
+        textVersionId?: string;
+      };
+      const touches =
+        input.evidence?.some((e) => deletedSet.has(e.versionId)) ||
+        input.requests?.some((r) => r.versionId && deletedSet.has(r.versionId)) ||
+        input.sourceVersionIds?.some((v) => deletedSet.has(v)) ||
+        (input.textVersionId && deletedSet.has(input.textVersionId));
+      if (!touches) continue;
+      await tx
+        .update(analysisRuns)
+        .set({
+          inputSnapshot: {
+            ...input,
+            scrubbed: true,
+            text: undefined,
+            evidence: input.evidence?.filter((e) => !deletedSet.has(e.versionId)),
+            requests: input.requests?.filter((r) => !r.versionId || !deletedSet.has(r.versionId)),
+          },
+          output: input.textVersionId ? null : undefined,
+        })
+        .where(eq(analysisRuns.id, run.id));
     }
     // Unfinished runs that froze this source in their input are canceled.
     for (const versionId of versionIds) {

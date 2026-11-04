@@ -1,4 +1,4 @@
-import { getAnalysis, getProduct, getVersionWithEvidence } from "@pew/db";
+import { getAnalysis, getModelConfig, getProduct, getVersionWithEvidence } from "@pew/db";
 import Link from "next/link";
 import { bulkCreateRequestsAction, createRequestAction } from "@/app/actions";
 import { BulkRequestsForm } from "@/components/BulkRequestsForm";
@@ -48,6 +48,7 @@ export default async function NewRequestPage({
           batchKey={crypto.randomUUID()}
           initialText={prefill?.text ?? ""}
           sourceName={prefill?.derivedFromVersionId ? "截图转写" : undefined}
+          modelReady={!!(await getModelConfig(db))?.hasKey}
         />
       </section>
 
