@@ -9,12 +9,12 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   const { product } = await searchParams;
   return (
     <>
-      <nav className="crumbs" aria-label="位置">
-        <Link href="/">产品</Link> / <span>快速开始</span>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <Link href="/">Products</Link> / <span>Quick start</span>
       </nav>
-      <h1>快速开始一次分析</h1>
+      <h1>Quick start an analysis</h1>
       <p className="muted">
-        把手头的需求和资料一次放进来：可以粘贴聊天记录、表格或截图。保存后会直接进入分析页，范围已经选好。所有内容只保存在本机。
+        Put in the requests and sources you have, all at once: paste chat logs, tables or screenshots. You then land on the analysis with its scope already selected. Everything stays on this machine.
       </p>
       <QuickStartForm
         action={quickStartAction}

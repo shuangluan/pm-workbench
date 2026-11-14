@@ -39,15 +39,15 @@ export async function setChangeNodes(db: Db, productId: string, analysisId: stri
       .select({ id: systemNodes.id })
       .from(systemNodes)
       .where(and(eq(systemNodes.productId, productId), inArray(systemNodes.id, unique)));
-    if (found.length !== unique.length) throw notFound("节点");
+    if (found.length !== unique.length) throw notFound("Node");
   }
   const updated = await db
     .update(analyses)
     .set({ changeNodeIds: unique, updatedAt: new Date() })
     .where(and(eq(analyses.productId, productId), eq(analyses.id, analysisId)))
     .returning({ status: analyses.status });
-  if (!updated.length) throw notFound("分析任务");
-  if (updated[0]!.status === "archived") throw new AppError("invalid_input", "已归档的分析不能修改");
+  if (!updated.length) throw notFound("Analysis");
+  if (updated[0]!.status === "archived") throw new AppError("invalid_input", "An archived analysis cannot be changed");
 }
 
 /** Deterministic confirmed-dependency check for the analysis's changed nodes, or null when none are chosen. */

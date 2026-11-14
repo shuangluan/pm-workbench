@@ -53,7 +53,7 @@ After changing `packages/db/src/schema.ts`, generate a migration:
 npm run db:generate
 ```
 
-To work without a real model, start the local mock model. In 设置与诊断 (Settings and diagnostics), set the endpoint to `http://127.0.0.1:11555/v1`, enable local model mode and enter any key:
+To work without a real model, start the local mock model. Under Settings, set the endpoint to `http://127.0.0.1:11555/v1`, enable local model mode and enter any key:
 
 ```bash
 npm run mock-model

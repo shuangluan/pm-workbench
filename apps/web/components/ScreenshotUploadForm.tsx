@@ -31,7 +31,7 @@ export function ScreenshotUploadForm({
       <ScreenshotPicker files={files} onChange={setFiles} />
       <div className="form-actions">
         <button type="submit" className="btn btn-secondary" disabled={!files.length || pending}>
-          {pending ? "保存中…" : `保存 ${files.length} 张截图${analysisId ? "并加入本次分析" : ""}`}
+          {pending ? "Saving…" : `Save ${files.length === 1 ? "1 screenshot" : `${files.length} screenshots`}${analysisId ? " to this analysis" : ""}`}
         </button>
         <span role="status" aria-live="polite">
           {state.error ? <span className="error">{state.error}</span> : state.ok ? <span className="ok">{state.ok}</span> : null}

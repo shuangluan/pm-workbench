@@ -11,7 +11,7 @@ const { code, expiresAt } = await issueSetupCode(dataDir);
 process.stdout.write(
   [
     "",
-    "  One-time setup code / 一次性初始化码：",
+    "  One-time setup code:",
     "",
     `      ${code}`,
     "",

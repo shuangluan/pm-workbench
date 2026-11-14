@@ -166,8 +166,8 @@ describe("claims, reports and deletion", () => {
     expect(v1).toMatchObject({ version: 1, status: "reviewed_clear" });
     const { snapshot } = await getReportVersion(db, p.id, a.id, 1);
     const md = renderReportMarkdown(snapshot);
-    expect(md).toContain("**[原文事实 · 用户输入 · 已修正]** 客服导出必须排除手机号 — 依据 [E1]");
-    expect(md).toContain("数据说明 v1 L3：“手机号属于受限字段。”");
+    expect(md).toContain("**[Source fact · User input · Corrected]** 客服导出必须排除手机号 — based on [E1]");
+    expect(md).toContain('数据说明 v1 L3: "手机号属于受限字段。"');
     expect((await listClaims(db, p.id, a.id))[0]!.original?.text).toBe("客服导出不得包含手机号");
   });
 
@@ -183,8 +183,8 @@ describe("claims, reports and deletion", () => {
     const { snapshot } = await getReportVersion(db, p.id, a.id, 1);
     const md = renderReportMarkdown(snapshot);
     expect(JSON.stringify(snapshot)).not.toContain("手机号属于受限字段");
-    expect(md).toContain("［来源已删除，原句不再保留］");
-    expect(md).toContain("数据说明 v1（来源已删除）");
+    expect(md).toContain("[source deleted; quote no longer kept]");
+    expect(md).toContain("数据说明 v1 (source deleted)");
   });
 });
 
@@ -230,17 +230,17 @@ describe("example, export and import", () => {
     const entries = unzipSync(bytes);
 
     const traversal = zipSync({ ...entries, "../evil.txt": strToU8("x") });
-    expect(() => inspectProductArchive(traversal)).toThrow(/不允许的路径/);
+    expect(() => inspectProductArchive(traversal)).toThrow(/path that is not allowed/);
 
     const textPath = Object.keys(entries).find((f) => f.startsWith("texts/"))!;
     const tampered = zipSync({ ...entries, [textPath]: strToU8("篡改后的内容") });
-    expect(() => inspectProductArchive(tampered)).toThrow(/校验和不一致/);
+    expect(() => inspectProductArchive(tampered)).toThrow(/checksum mismatch/);
 
     const manifest = JSON.parse(new TextDecoder().decode(entries["manifest.json"]));
     const future = zipSync({ ...entries, "manifest.json": strToU8(JSON.stringify({ ...manifest, schemaVersion: 99 })) });
-    expect(() => inspectProductArchive(future)).toThrow(/不支持的导出格式版本 99/);
+    expect(() => inspectProductArchive(future)).toThrow(/Unsupported export format version 99/);
 
-    expect(() => inspectProductArchive(strToU8("not a zip"))).toThrow(/无法读取/);
+    expect(() => inspectProductArchive(strToU8("not a zip"))).toThrow(/Cannot read/);
   });
 });
 
@@ -323,7 +323,7 @@ describe("quick start", () => {
       sources: [],
       images: [],
     });
-    await expect(r).rejects.toThrow("第 2 条需求缺少业务方");
+    await expect(r).rejects.toThrow("Request 2 has no party");
   });
 });
 
@@ -333,8 +333,8 @@ describe("impact in reports", () => {
     const [analysis] = await (await import("@pew/db")).listAnalyses(db, id);
     await saveReportVersion(db, id, analysis!.id);
     const md = renderReportMarkdown((await getReportVersion(db, id, analysis!.id, 1)).snapshot);
-    expect(md).toContain("**导出模块**（直接依赖，1）");
-    expect(md).toContain("### 需要验证");
+    expect(md).toContain("**Export module** (Direct dependency, 1)");
+    expect(md).toContain("### To verify");
   });
 
   it("round-trips screenshots through export and import", async () => {
@@ -349,6 +349,6 @@ describe("impact in reports", () => {
     const entries = unzipSync(bytes);
     const imgPath = Object.keys(entries).find((k) => k.startsWith("files/"))!;
     const forged = zipSync({ ...entries, [imgPath]: strToU8("<svg/>") });
-    expect(() => inspectProductArchive(forged)).toThrow(/校验和不一致/);
+    expect(() => inspectProductArchive(forged)).toThrow(/checksum mismatch/);
   });
 });

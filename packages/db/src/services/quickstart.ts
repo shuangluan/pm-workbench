@@ -33,13 +33,13 @@ const derivedId = (prefix: string, batchKey: string) =>
   `${prefix}_${createHash("sha256").update(`${prefix}:${batchKey}`).digest("hex").slice(0, 32)}`;
 
 export async function quickStart(db: Db, dataDir: string, input: QuickStartInput): Promise<QuickStartResult> {
-  if (!/^[0-9a-f-]{36}$/.test(input.batchKey)) throw new AppError("invalid_input", "缺少幂等键");
+  if (!/^[0-9a-f-]{36}$/.test(input.batchKey)) throw new AppError("invalid_input", "Missing idempotency key");
   const title = input.analysis.title.trim();
-  if (!title) throw new AppError("invalid_input", "请填写这次分析的标题");
-  if (!input.requests.length && !input.images.length) throw new AppError("invalid_input", "请至少粘贴一条需求或一张截图");
-  if (input.images.length > MAX_IMAGES_PER_UPLOAD) throw new AppError("invalid_input", `一次最多 ${MAX_IMAGES_PER_UPLOAD} 张截图`);
+  if (!title) throw new AppError("invalid_input", "Give this analysis a title");
+  if (!input.requests.length && !input.images.length) throw new AppError("invalid_input", "Paste at least one request or screenshot");
+  if (input.images.length > MAX_IMAGES_PER_UPLOAD) throw new AppError("invalid_input", `At most ${MAX_IMAGES_PER_UPLOAD} screenshots at a time`);
   const missingParty = input.requests.findIndex((r) => !r.party.trim());
-  if (missingParty !== -1) throw new AppError("invalid_input", `第 ${missingParty + 1} 条需求缺少业务方`);
+  if (missingParty !== -1) throw new AppError("invalid_input", `Request ${missingParty + 1} has no party`);
 
   const analysisId = derivedId("ana", input.batchKey);
   const [done] = await db.select({ productId: analyses.productId }).from(analyses).where(eq(analyses.id, analysisId));
@@ -50,7 +50,7 @@ export async function quickStart(db: Db, dataDir: string, input: QuickStartInput
     productId = (await getProduct(db, input.product.id)).id;
   } else {
     const name = input.product.name.trim();
-    if (!name) throw new AppError("invalid_input", "请填写产品名称");
+    if (!name) throw new AppError("invalid_input", "Enter a product name");
     productId = derivedId("prod", input.batchKey);
     await db.insert(products).values({ id: productId, name: name.slice(0, 120) }).onConflictDoNothing();
   }
@@ -61,20 +61,20 @@ export async function quickStart(db: Db, dataDir: string, input: QuickStartInput
     try {
       const r = await addSource(db, productId, { name: src.name, text: src.text, kind: src.kind });
       versionIds.push(r.versionId);
-      notes.push(r.status === "created" ? `资料“${src.name}”已保存` : `资料“${src.name}”与“${r.name}”内容相同，已复用`);
+      notes.push(r.status === "created" ? `Source "${src.name}" saved` : `Source "${src.name}" has the same content as "${r.name}" and was reused`);
     } catch (err) {
       if (!(err instanceof AppError)) throw err;
-      notes.push(`资料“${src.name}”未保存：${err.message}`);
+      notes.push(`Source "${src.name}" not saved: ${err.message}`);
     }
   }
   for (const img of input.images) {
     try {
       const r = await addImageSource(db, dataDir, productId, img);
       versionIds.push(r.versionId);
-      notes.push(r.status === "created" ? `截图“${img.name}”已保存` : `截图“${img.name}”与“${r.name}”相同，已复用`);
+      notes.push(r.status === "created" ? `Screenshot "${img.name}" saved` : `Screenshot "${img.name}" is identical to "${r.name}" and was reused`);
     } catch (err) {
       if (!(err instanceof AppError)) throw err;
-      notes.push(`截图“${img.name}”未保存：${err.message}`);
+      notes.push(`Screenshot "${img.name}" not saved: ${err.message}`);
     }
   }
   const requestIds = input.requests.length ? await createRequests(db, productId, input.batchKey, input.requests) : [];

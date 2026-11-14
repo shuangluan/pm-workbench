@@ -79,7 +79,7 @@ export async function recoverInterruptedRuns(db: Db, { all = false, now = new Da
   if (!lost.length) return 0;
   await db
     .update(analysisRuns)
-    .set({ status: "interrupted", finishedAt: now, errorKind: "interrupted", errorMessage: "服务在任务运行时重启，结果未知。重试可能产生额外费用。" })
+    .set({ status: "interrupted", finishedAt: now, errorKind: "interrupted", errorMessage: "The server restarted while this run was going, so the outcome is unknown. Retrying may cost extra." })
     .where(and(inArray(analysisRuns.id, lost.map((r) => r.id)), eq(analysisRuns.status, "running")));
   return lost.length;
 }
@@ -193,7 +193,7 @@ async function taskFor(deps: WorkerDeps, run: Run): Promise<Task<any>> {
       },
     };
   }
-  throw new AppError("invalid_input", `未知的任务类型 ${run.taskType}`);
+  throw new AppError("invalid_input", `Unknown run type ${run.taskType}`);
 }
 
 async function execute(deps: WorkerDeps, run: Run) {
@@ -240,7 +240,7 @@ async function execute(deps: WorkerDeps, run: Run) {
           await finishSucceeded(db, run.id, (tx) => task.write(tx, parsed.value));
           return;
         }
-        failure = { kind: "invalid_output", message: `模型输出未通过校验：${parsed.errors.slice(0, 3).join("；")}` };
+        failure = { kind: "invalid_output", message: `The model output failed validation: ${parsed.errors.slice(0, 3).join("; ")}` };
       } catch (err) {
         if (!(err instanceof ModelError)) throw err;
         await record({});
@@ -253,7 +253,7 @@ async function execute(deps: WorkerDeps, run: Run) {
       }
     }
   } catch (err) {
-    const message = err instanceof AppError ? err.message : "任务执行时发生内部错误";
+    const message = err instanceof AppError ? err.message : "An internal error occurred while running the task";
     if (!(err instanceof AppError)) console.error("[pew] run failed:", err instanceof Error ? err.name : "unknown");
     await finishFailed(db, run.id, err instanceof AppError ? err.code : "internal", message);
   } finally {

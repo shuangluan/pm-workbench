@@ -37,7 +37,7 @@ export const sha256Bytes = (b: Uint8Array) => createHash("sha256").update(b).dig
 const STORAGE_KEY = /^files\/[a-z0-9_]+\/[a-z0-9_]+\.(png|jpg|webp|gif)$/;
 
 export function storagePath(dataDir: string, storageKey: string): string {
-  if (!STORAGE_KEY.test(storageKey)) throw new AppError("invalid_input", "无效的文件位置");
+  if (!STORAGE_KEY.test(storageKey)) throw new AppError("invalid_input", "Invalid file location");
   return join(dataDir, storageKey);
 }
 
@@ -58,10 +58,10 @@ export type AddImageResult =
   | { status: "duplicate"; sourceId: string; versionId: string; name: string };
 
 export async function addImageSource(db: Db, dataDir: string, productId: string, input: { name: string; bytes: Uint8Array }): Promise<AddImageResult> {
-  if (input.bytes.byteLength === 0) throw new AppError("invalid_input", "图片为空");
-  if (input.bytes.byteLength > MAX_IMAGE_BYTES) throw new AppError("invalid_input", "图片超过 10 MB");
+  if (input.bytes.byteLength === 0) throw new AppError("invalid_input", "The image is empty");
+  if (input.bytes.byteLength > MAX_IMAGE_BYTES) throw new AppError("invalid_input", "The image is larger than 10 MB");
   const type = sniffImage(input.bytes);
-  if (!type) throw new AppError("invalid_input", "只支持 PNG、JPEG、WebP、GIF 图片");
+  if (!type) throw new AppError("invalid_input", "Only PNG, JPEG, WebP and GIF images are supported");
   const hash = sha256Bytes(input.bytes);
 
   const [dup] = await db
@@ -71,7 +71,7 @@ export async function addImageSource(db: Db, dataDir: string, productId: string,
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.contentHash, hash), eq(sourceVersions.validity, "valid"), eq(sources.kind, "image")));
   if (dup) return { status: "duplicate", ...dup };
 
-  const name = input.name.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 200) || "截图";
+  const name = input.name.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 200) || "Screenshot";
   const sourceId = newId("src");
   const versionId = newId("sv");
   const storageKey = writeStoredFile(dataDir, productId, versionId, type, input.bytes);
@@ -105,7 +105,7 @@ export async function readImage(db: Db, dataDir: string, productId: string, vers
     .select()
     .from(sourceVersions)
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, versionId)));
-  if (!v || !v.storageKey || !v.mediaType) throw notFound("图片");
+  if (!v || !v.storageKey || !v.mediaType) throw notFound("Image");
   return { bytes: readFileSync(storagePath(dataDir, v.storageKey)), mediaType: v.mediaType as ImageType };
 }
 
@@ -129,8 +129,8 @@ export async function saveTranscript(db: Db, productId: string, imageVersionId: 
     .from(sourceVersions)
     .innerJoin(sources, eq(sources.id, sourceVersions.sourceId))
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, imageVersionId)));
-  if (!image || image.kind !== "image") throw notFound("截图");
-  if (image.v.validity !== "valid") throw new AppError("invalid_input", "只能转写当前有效的截图");
+  if (!image || image.kind !== "image") throw notFound("Screenshot");
+  if (image.v.validity !== "valid") throw new AppError("invalid_input", "Only the current version of a screenshot can be transcribed");
   const ingested = ingestOrThrow(text);
   const existing = await findTranscript(db, productId, imageVersionId);
   if (existing?.text === ingested.text) return { sourceId: existing.sourceId, versionId: existing.versionId, status: "unchanged" as const };
@@ -139,7 +139,7 @@ export async function saveTranscript(db: Db, productId: string, imageVersionId: 
   const versionId = newId("sv");
   await db.transaction(async (tx) => {
     if (existing) await supersedeVersions(tx, productId, sourceId);
-    else await tx.insert(sources).values({ id: sourceId, productId, kind: "transcript", name: `${image.name}（转写）` });
+    else await tx.insert(sources).values({ id: sourceId, productId, kind: "transcript", name: `${image.name} (transcript)` });
     await tx.insert(sourceVersions).values({
       id: versionId,
       productId,

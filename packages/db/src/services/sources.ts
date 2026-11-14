@@ -9,10 +9,10 @@ import { removeStoredFile } from "./media";
 import { touchProduct } from "./products";
 
 const INGEST_MESSAGES: Record<Exclude<IngestResult, { ok: true }>["code"], string> = {
-  empty: "内容为空",
-  too_large: "文件超过 2 MB",
-  invalid_encoding: "不是 UTF-8 编码，请转换为 UTF-8 后再上传",
-  too_many_chars: "解析后超过 100,000 字符，请拆分后再上传",
+  empty: "The content is empty",
+  too_large: "The file is larger than 2 MB",
+  invalid_encoding: "The file is not UTF-8; convert it and upload again",
+  too_many_chars: "More than 100,000 characters; split it and upload again",
 };
 
 export function ingestOrThrow(raw: string) {
@@ -32,7 +32,7 @@ export async function addSource(
   input: { name: string; text: string; kind?: "file" | "paste"; originalUrl?: string },
 ): Promise<AddSourceResult> {
   const name = input.name.trim();
-  if (!name) throw new AppError("invalid_input", "资料名称不能为空");
+  if (!name) throw new AppError("invalid_input", "The source needs a name");
   const ingested = ingestOrThrow(input.text);
 
   const [dup] = await db
@@ -97,7 +97,7 @@ export async function addSourceVersion(db: Db, productId: string, sourceId: stri
   const ingested = ingestOrThrow(text);
   const source = await getSource(db, productId, sourceId);
   const latest = source.versions[0];
-  if (latest?.validity === "source_deleted") throw new AppError("invalid_input", "该资料已永久删除");
+  if (latest?.validity === "source_deleted") throw new AppError("invalid_input", "This source was permanently deleted");
   if (latest?.contentHash === ingested.hash) return { status: "unchanged" as const, versionId: latest.id };
   const versionId = newId("sv");
   await db.transaction(async (tx) => {
@@ -147,7 +147,7 @@ export async function listSources(db: Db, productId: string) {
 
 export async function getSource(db: Db, productId: string, sourceId: string) {
   const [source] = await db.select().from(sources).where(and(eq(sources.productId, productId), eq(sources.id, sourceId)));
-  if (!source) throw notFound("资料");
+  if (!source) throw notFound("Source");
   const versions = await db
     .select()
     .from(sourceVersions)
@@ -161,7 +161,7 @@ export async function getVersionWithEvidence(db: Db, productId: string, versionI
     .select()
     .from(sourceVersions)
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, versionId)));
-  if (!version) throw notFound("资料版本");
+  if (!version) throw notFound("Source version");
   const evs = await db
     .select()
     .from(evidences)
@@ -185,15 +185,15 @@ async function citableVersion(db: Db | Tx, productId: string, versionId: string)
     .select()
     .from(sourceVersions)
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, versionId)));
-  if (!version) throw notFound("资料版本");
+  if (!version) throw notFound("Source version");
   if (version.validity !== "valid" || version.text === null) {
-    throw new AppError("invalid_input", "只能在当前有效的文字版本中添加引用");
+    throw new AppError("invalid_input", "Citations can only be added to the current version of a text source");
   }
   return { ...version, text: version.text };
 }
 
 async function insertEvidence(db: Db | Tx, productId: string, version: { id: string; text: string }, span: { start: number; end: number }) {
-  if (charCount(version.text.slice(span.start, span.end)) > 2_000) throw new AppError("invalid_input", "单条引用最多 2,000 字符");
+  if (charCount(version.text.slice(span.start, span.end)) > 2_000) throw new AppError("invalid_input", "A citation can have at most 2,000 characters");
   const [existing] = await db
     .select()
     .from(evidences)
@@ -226,7 +226,7 @@ export async function ensureEvidence(db: Db | Tx, productId: string, versionId: 
     .select()
     .from(sourceVersions)
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, versionId)));
-  if (!version || version.text === null) throw notFound("资料版本");
+  if (!version || version.text === null) throw notFound("Source version");
   return { evidence: await insertEvidence(db, productId, { id: version.id, text: version.text }, { start, end }), validity: version.validity };
 }
 
@@ -234,10 +234,10 @@ export async function ensureEvidence(db: Db | Tx, productId: string, versionId: 
 export async function addEvidenceByQuote(db: Db | Tx, productId: string, versionId: string, quote: string) {
   const version = await citableVersion(db, productId, versionId);
   const trimmed = quote.trim();
-  if (!trimmed) throw new AppError("invalid_input", "引用原句不能为空");
+  if (!trimmed) throw new AppError("invalid_input", "The quoted sentence cannot be empty");
   const hits = findQuote(version.text, trimmed);
-  if (!hits.length) throw new AppError("not_found", "在该版本中找不到这段原句，请直接从原文复制");
-  if (hits.length > 1) throw new AppError("ambiguous", `这段文字在原文中出现了 ${hits.length} 次，请多选几个字使其唯一`, { occurrences: hits.length });
+  if (!hits.length) throw new AppError("not_found", "This sentence is not in this version; copy it straight from the source");
+  if (hits.length > 1) throw new AppError("ambiguous", `This text appears ${hits.length} times in the source; include a few more characters to make it unique`, { occurrences: hits.length });
   return insertEvidence(db, productId, version, hits[0]!);
 }
 
@@ -245,13 +245,13 @@ export async function addEvidenceByQuote(db: Db | Tx, productId: string, version
 export async function addEvidenceBySpan(db: Db | Tx, productId: string, versionId: string, start: number, end: number) {
   const version = await citableVersion(db, productId, versionId);
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > version.text.length || start >= end) {
-    throw new AppError("invalid_input", "选择的范围无效，请重新选择");
+    throw new AppError("invalid_input", "The selection is not valid; select again");
   }
   let s = start;
   let e = end;
   while (s < e && /\s/.test(version.text[s]!)) s++;
   while (e > s && /\s/.test(version.text[e - 1]!)) e--;
-  if (s === e) throw new AppError("invalid_input", "选择的范围只有空白");
+  if (s === e) throw new AppError("invalid_input", "The selection contains only whitespace");
   return insertEvidence(db, productId, version, { start: s, end: e });
 }
 
@@ -296,7 +296,7 @@ async function reportsCiting(db: Db | Tx, productId: string, evidenceIds: string
   });
 }
 
-export const DELETED_PLACEHOLDER = "［来源已删除，原句不再保留］";
+export const DELETED_PLACEHOLDER = "[source deleted; quote no longer kept]";
 
 /**
  * Permanent deletion (§8.3): text and quotes are removed everywhere this

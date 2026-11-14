@@ -96,7 +96,7 @@ function act(fn: (fd: FormData) => Promise<string | void>, { publicAction = fals
 export const setupAction = act(
   async (fd) => {
     const passphrase = str(fd, "passphrase");
-    if (passphrase !== str(fd, "passphrase2")) throw new AppError("invalid_input", "两次输入的访问口令不一致");
+    if (passphrase !== str(fd, "passphrase2")) throw new AppError("invalid_input", "The two passphrases do not match");
     const token = await completeSetup(await getDb(), config.dataDir, str(fd, "code"), passphrase);
     await setSessionCookie(token);
     redirect("/");
@@ -143,57 +143,57 @@ export const addSourcesAction = act(async (fd) => {
   const productId = str(fd, "productId");
   const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   const pasted = str(fd, "text");
-  if (!files.length && !pasted.trim()) throw new AppError("invalid_input", "请粘贴文字或选择文件");
-  if (files.length > MAX_FILES_PER_UPLOAD) throw new AppError("invalid_input", `一次最多上传 ${MAX_FILES_PER_UPLOAD} 个文件`);
+  if (!files.length && !pasted.trim()) throw new AppError("invalid_input", "Paste some text or choose a file");
+  if (files.length > MAX_FILES_PER_UPLOAD) throw new AppError("invalid_input", `Upload at most ${MAX_FILES_PER_UPLOAD} files at a time`);
 
   const results: string[] = [];
   if (pasted.trim()) {
-    const name = str(fd, "name").trim() || "粘贴的资料";
+    const name = str(fd, "name").trim() || "Pasted source";
     const r = await addSource(db, productId, { name, text: pasted, kind: "paste", originalUrl: str(fd, "originalUrl") });
-    results.push(r.status === "created" ? `“${name}”已保存` : `“${name}”与已有资料“${r.name}”内容相同，已复用`);
+    results.push(r.status === "created" ? `"${name}" saved` : `"${name}" has the same content as "${r.name}" and was reused`);
   }
   for (const file of files) {
-    const name = file.name.replace(/[\u0000-\u001f]/g, "").slice(0, 200) || "未命名文件";
+    const name = file.name.replace(/[\u0000-\u001f]/g, "").slice(0, 200) || "Untitled file";
     if (!/\.(txt|md|markdown)$/i.test(name)) {
-      results.push(`“${name}”失败：只支持 .txt / .md`);
+      results.push(`"${name}" failed: only .txt and .md are supported`);
       continue;
     }
     if (file.size > MAX_FILE_BYTES) {
-      results.push(`“${name}”失败：超过 2 MB`);
+      results.push(`"${name}" failed: larger than 2 MB`);
       continue;
     }
     const ingested = ingestBytes(new Uint8Array(await file.arrayBuffer()));
     if (!ingested.ok) {
-      const why = { empty: "内容为空", too_large: "超过 2 MB", invalid_encoding: "不是 UTF-8 编码，请转换后再上传", too_many_chars: "超过 100,000 字符" }[ingested.code];
-      results.push(`“${name}”失败：${why}`);
+      const why = { empty: "the file is empty", too_large: "larger than 2 MB", invalid_encoding: "not UTF-8; convert it and upload again", too_many_chars: "more than 100,000 characters" }[ingested.code];
+      results.push(`"${name}" failed: ${why}`);
       continue;
     }
     try {
       const r = await addSource(db, productId, { name, text: ingested.text, kind: "file" });
-      results.push(r.status === "created" ? `“${name}”已保存` : `“${name}”与已有资料“${r.name}”内容相同，已复用`);
+      results.push(r.status === "created" ? `"${name}" saved` : `"${name}" has the same content as "${r.name}" and was reused`);
     } catch (err) {
       if (!(err instanceof AppError)) throw err;
-      results.push(`“${name}”失败：${err.message}`);
+      results.push(`"${name}" failed: ${err.message}`);
     }
   }
-  return results.join("；");
+  return results.join("; ");
 });
 
 export const addSourceVersionAction = act(async (fd) => {
   const productId = str(fd, "productId");
   const sourceId = str(fd, "sourceId");
   const r = await addSourceVersion(await getDb(), productId, sourceId, str(fd, "text"));
-  if (r.status === "unchanged") return "内容与当前版本相同，未创建新版本";
+  if (r.status === "unchanged") return "Same content as the current version; no new version created";
   redirect(`/p/${productId}/sources/${sourceId}`);
 });
 
 export const addEvidenceAction = act(async (fd) => {
   await addEvidenceByQuote(await getDb(), str(fd, "productId"), str(fd, "versionId"), str(fd, "quote"));
-  return "引用已添加";
+  return "Citation added";
 });
 
 export const deleteSourceAction = act(async (fd) => {
-  if (str(fd, "confirm") !== "永久删除") throw new AppError("invalid_input", "请输入“永久删除”以确认");
+  if (str(fd, "confirm") !== "DELETE") throw new AppError("invalid_input", "Type DELETE to confirm");
   const productId = str(fd, "productId");
   await deleteSourcePermanently(await getDb(), productId, str(fd, "sourceId"), config.dataDir);
   redirect(`/p/${productId}`);
@@ -214,7 +214,7 @@ export const createRequestAction = act(async (fd) => {
     if (dups.length) {
       throw new AppError(
         "duplicate",
-        `已有 ${dups.length} 条原文相同的需求（${dups.map((d) => d.party).join("、")}）。如果是不同提出者的同样诉求，勾选下方选项后再保存。`,
+        `${dups.length === 1 ? "A request" : `${dups.length} requests`} with the same text already exist (${dups.map((d) => d.party).join(", ")}). If this is the same ask from a different party, tick the option below and save again.`,
       );
     }
   }
@@ -235,12 +235,12 @@ export const updateRequestAction = act(async (fd) => {
     party: str(fd, "party"),
     fields: requestFields(fd),
   });
-  return "已保存";
+  return "Saved";
 });
 
 export const correctRequestTextAction = act(async (fd) => {
   await correctRequestText(await getDb(), str(fd, "productId"), str(fd, "requestId"), Number(str(fd, "revision")), str(fd, "originalText"));
-  return "已保存为新版本，旧版本引用保持不变";
+  return "Saved as a new version; citations of the old version are unchanged";
 });
 
 // Analyses
@@ -261,7 +261,7 @@ export const updateAnalysisAction = act(async (fd) => {
     goal: str(fd, "goal"),
     changeDescription: str(fd, "changeDescription"),
   });
-  return "已保存";
+  return "Saved";
 });
 
 export const setScopeAction = act(async (fd) => {
@@ -269,7 +269,7 @@ export const setScopeAction = act(async (fd) => {
     requestIds: strs(fd, "requestIds"),
     sourceVersionIds: strs(fd, "sourceVersionIds"),
   });
-  return "范围已保存";
+  return "Scope saved";
 });
 
 export const archiveAnalysisAction = act(async (fd) => {
@@ -278,7 +278,7 @@ export const archiveAnalysisAction = act(async (fd) => {
 });
 
 export const deleteAnalysisAction = act(async (fd) => {
-  if (str(fd, "confirm") !== "删除") throw new AppError("invalid_input", "请输入“删除”以确认");
+  if (str(fd, "confirm") !== "DELETE") throw new AppError("invalid_input", "Type DELETE to confirm");
   const productId = str(fd, "productId");
   await deleteAnalysis(await getDb(), productId, str(fd, "analysisId"));
   redirect(`/p/${productId}`);
@@ -293,7 +293,7 @@ export const addClaimAction = act(async (fd) => {
   const quote = str(fd, "newQuote");
   if (quote.trim()) {
     const versionId = str(fd, "newQuoteVersionId");
-    if (!versionId) throw new AppError("invalid_input", "请选择新引用来自哪份资料");
+    if (!versionId) throw new AppError("invalid_input", "Choose which source the new citation comes from");
     evidenceIds.push((await addEvidenceByQuote(db, productId, versionId, quote)).id);
   }
   await addUserClaim(db, productId, str(fd, "analysisId"), {
@@ -304,7 +304,7 @@ export const addClaimAction = act(async (fd) => {
     missing: str(fd, "missing"),
     evidenceIds,
   });
-  return "条目已添加";
+  return "Claim added";
 });
 
 export const reviewAction = act(async (fd) => {
@@ -335,7 +335,7 @@ const importDir = () => join(config.dataDir, "imports");
 
 export const inspectImportAction = act(async (fd) => {
   const file = fd.get("archive");
-  if (!(file instanceof File) || file.size === 0) throw new AppError("invalid_input", "请选择导出的 .zip 文件");
+  if (!(file instanceof File) || file.size === 0) throw new AppError("invalid_input", "Choose an exported .zip file");
   const bytes = new Uint8Array(await file.arrayBuffer());
   inspectProductArchive(bytes);
   const token = crypto.randomUUID();
@@ -346,13 +346,13 @@ export const inspectImportAction = act(async (fd) => {
 
 export const confirmImportAction = act(async (fd) => {
   const token = str(fd, "token");
-  if (!/^[0-9a-f-]{36}$/.test(token)) throw new AppError("invalid_input", "导入令牌无效");
+  if (!/^[0-9a-f-]{36}$/.test(token)) throw new AppError("invalid_input", "Invalid import token");
   const path = join(importDir(), `${token}.zip`);
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(readFileSync(path));
   } catch {
-    throw new AppError("not_found", "待导入的文件已过期，请重新上传");
+    throw new AppError("not_found", "The file to import has expired; upload it again");
   }
   const { productId } = await importProductArchive(await getDb(), config.dataDir, bytes);
   rmSync(path, { force: true });
@@ -372,9 +372,9 @@ function parseRequests(fd: FormData, sourceName: string): { party: string; origi
   try {
     raw = JSON.parse(str(fd, "requests") || "[]");
   } catch {
-    throw new AppError("invalid_input", "需求数据格式错误，请刷新后重试");
+    throw new AppError("invalid_input", "Request data is malformed; refresh and try again");
   }
-  if (!Array.isArray(raw)) throw new AppError("invalid_input", "需求数据格式错误");
+  if (!Array.isArray(raw)) throw new AppError("invalid_input", "Request data is malformed");
   return (raw as RequestPayload[])
     .filter((r) => typeof r?.text === "string" && r.text.trim())
     .map((r) => ({
@@ -389,21 +389,21 @@ async function readDocs(fd: FormData) {
   const out: { name: string; text: string; kind: "file" | "paste" }[] = [];
   const notes: string[] = [];
   const files = fd.getAll("docs").filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length > MAX_FILES_PER_UPLOAD) throw new AppError("invalid_input", `资料一次最多 ${MAX_FILES_PER_UPLOAD} 个文件`);
+  if (files.length > MAX_FILES_PER_UPLOAD) throw new AppError("invalid_input", `At most ${MAX_FILES_PER_UPLOAD} source files at a time`);
   for (const file of files) {
-    const name = file.name.replace(/[\u0000-\u001f]/g, "").slice(0, 200) || "未命名文件";
+    const name = file.name.replace(/[\u0000-\u001f]/g, "").slice(0, 200) || "Untitled file";
     if (!/\.(txt|md|markdown)$/i.test(name)) {
-      notes.push(`“${name}”未保存：只支持 .txt / .md`);
+      notes.push(`"${name}" not saved: only .txt and .md are supported`);
       continue;
     }
     const ingested = ingestBytes(new Uint8Array(await file.arrayBuffer()));
     if (!ingested.ok) {
-      notes.push(`“${name}”未保存：${{ empty: "内容为空", too_large: "超过 2 MB", invalid_encoding: "不是 UTF-8 编码", too_many_chars: "超过 100,000 字符" }[ingested.code]}`);
+      notes.push(`"${name}" not saved: ${{ empty: "the file is empty", too_large: "larger than 2 MB", invalid_encoding: "not UTF-8; convert it and upload again", too_many_chars: "more than 100,000 characters" }[ingested.code]}`);
       continue;
     }
     out.push({ name, text: ingested.text, kind: "file" });
   }
-  if (str(fd, "docText").trim()) out.push({ name: str(fd, "docName").trim() || "粘贴的资料", text: str(fd, "docText"), kind: "paste" });
+  if (str(fd, "docText").trim()) out.push({ name: str(fd, "docName").trim() || "Pasted source", text: str(fd, "docText"), kind: "paste" });
   return { docs: out, notes };
 }
 
@@ -423,7 +423,7 @@ export const quickStartAction = act(async (fd) => {
     batchKey: str(fd, "batchKey"),
     product: str(fd, "productId") ? { id: str(fd, "productId") } : { name: str(fd, "productName") },
     analysis: { title: str(fd, "title"), goal: str(fd, "goal") },
-    requests: parseRequests(fd, `快速开始 ${today}`),
+    requests: parseRequests(fd, `Quick start ${today}`),
     sources: docs,
     images: await readImages(fd),
   });
@@ -434,10 +434,10 @@ export const bulkCreateRequestsAction = act(async (fd) => {
   const db = await getDb();
   const productId = str(fd, "productId");
   const analysisId = str(fd, "analysisId");
-  const requests = parseRequests(fd, str(fd, "sourceName") || `批量录入 ${new Date().toISOString().slice(0, 10)}`);
-  if (!requests.length) throw new AppError("invalid_input", "没有可保存的需求");
+  const requests = parseRequests(fd, str(fd, "sourceName") || `Bulk entry ${new Date().toISOString().slice(0, 10)}`);
+  if (!requests.length) throw new AppError("invalid_input", "There are no requests to save");
   const missing = requests.findIndex((r) => !r.party.trim());
-  if (missing !== -1) throw new AppError("invalid_input", `第 ${missing + 1} 条需求缺少业务方`);
+  if (missing !== -1) throw new AppError("invalid_input", `Request ${missing + 1} has no party`);
   const ids = await createRequests(db, productId, str(fd, "batchKey"), requests);
   if (analysisId) {
     await appendToScope(db, productId, analysisId, { requestIds: ids });
@@ -450,22 +450,22 @@ export const uploadImagesAction = act(async (fd) => {
   const db = await getDb();
   const productId = str(fd, "productId");
   const images = await readImages(fd);
-  if (!images.length) throw new AppError("invalid_input", "请先粘贴或选择截图");
+  if (!images.length) throw new AppError("invalid_input", "Paste or choose a screenshot first");
   const notes: string[] = [];
   const versionIds: string[] = [];
   for (const img of images) {
     try {
       const r = await addImageSource(db, config.dataDir, productId, img);
       versionIds.push(r.versionId);
-      notes.push(r.status === "created" ? `“${img.name}”已保存` : `“${img.name}”与“${r.name}”相同，已复用`);
+      notes.push(r.status === "created" ? `"${img.name}" saved` : `"${img.name}" is identical to "${r.name}" and was reused`);
     } catch (err) {
       if (!(err instanceof AppError)) throw err;
-      notes.push(`“${img.name}”未保存：${err.message}`);
+      notes.push(`"${img.name}" not saved: ${err.message}`);
     }
   }
   const analysisId = str(fd, "analysisId");
   if (analysisId && versionIds.length) await appendToScope(db, productId, analysisId, { sourceVersionIds: versionIds });
-  return notes.join("；");
+  return notes.join("; ");
 });
 
 export const saveTranscriptAction = act(async (fd) => {
@@ -474,12 +474,12 @@ export const saveTranscriptAction = act(async (fd) => {
   const r = await saveTranscript(db, productId, str(fd, "imageVersionId"), str(fd, "text"), "user");
   const analysisId = str(fd, "analysisId");
   if (analysisId) await appendToScope(db, productId, analysisId, { sourceVersionIds: [r.versionId] });
-  return r.status === "unchanged" ? "内容没有变化" : "转写已保存。可以在转写中划选引用，或从转写拆分需求。";
+  return r.status === "unchanged" ? "No changes" : "Transcript saved. You can select citations in it, or split it into requests.";
 });
 
 export const setChangeNodesAction = act(async (fd) => {
   await setChangeNodes(await getDb(), str(fd, "productId"), str(fd, "analysisId"), strs(fd, "nodeIds"));
-  return "已保存，报告中的依赖检查将从这些节点开始";
+  return "Saved. The report's dependency check starts from these nodes.";
 });
 
 /** Called from the source viewer when the user selects text. Not a form action. */
@@ -510,29 +510,29 @@ export const saveModelAction = act(async (fd) => {
     inputPricePerMillion: str(fd, "inputPricePerMillion"),
     outputPricePerMillion: str(fd, "outputPricePerMillion"),
   });
-  return "已保存";
+  return "Saved";
 });
 
 export const removeModelKeyAction = act(async () => {
   await removeModelKey(await getDb());
-  return "密钥已删除";
+  return "Key removed";
 });
 
 const CONNECTION_HINTS: Record<string, string> = {
-  auth: "密钥错误：请检查密钥是否正确、是否有权限使用这个模型。",
-  model_not_found: "模型不存在：请检查模型 ID，以及账号是否能使用它。",
-  network: "连不上：请检查端点地址和网络。",
-  rate_limited: "被限流或额度用完：请稍后再试，或检查账户额度。",
-  unsupported_format: "格式不支持：这个模型或服务可能不支持结构化输出。",
-  outcome_unknown: "连接超时：请调高超时，或检查网络。",
-  truncated: "输出上限过低：请调高输出上限。",
-  refused: "模型拒绝了测试请求。",
+  auth: "Key rejected: check that the key is correct and allowed to use this model.",
+  model_not_found: "Model not found: check the model ID and that your account can use it.",
+  network: "Cannot connect: check the endpoint and your network.",
+  rate_limited: "Rate limited or out of quota: try again later, or check your account.",
+  unsupported_format: "Unsupported format: this model or service may not support structured output.",
+  outcome_unknown: "Timed out: raise the timeout, or check your network.",
+  truncated: "Output limit too low: raise it.",
+  refused: "The model refused the test request.",
 };
 
 export const testModelAction = act(async () => {
   try {
     const { model } = await testModelConnection(await getDb(), config.dataDir);
-    return `连接成功，模型 ${model} 已响应。`;
+    return `Connected. Model ${model} responded.`;
   } catch (err) {
     if (err instanceof ModelError) throw new AppError("invalid_input", CONNECTION_HINTS[err.kind] ?? err.message);
     throw err;

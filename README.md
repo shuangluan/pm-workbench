@@ -8,7 +8,7 @@ Helps platform and B2B product managers turn requests from many stakeholders int
 >
 > **The model path has only been tested with a mock server and local tests. It has not been evaluated with a real model, so analysis quality is unknown.** Impact inference and the local memory pages are planned for M3.
 
-> **Language:** the web interface and error messages are currently **Chinese only**. Report headings can be switched to English, and model output follows the language of your source material, although the prompts themselves are in Chinese and English material has not been tested.
+> **Language:** the web interface, error messages, reports and model prompts are in English. Your sources and requests can be in any language: quoted evidence stays in its original language, model output follows the language of your material, and the request splitter understands both English and Chinese formats.
 
 ## Run locally (no Docker needed)
 
@@ -71,7 +71,7 @@ Start the local mock model, which costs nothing and exits on its own after 20 mi
 npm run mock-model
 ```
 
-Then, under 设置与诊断 (Settings and diagnostics), choose the OpenAI-compatible interface, set the endpoint to `http://127.0.0.1:11555/v1`, enable local model mode and enter any key. Its output is fixed synthetic text marked 【模拟】 ("simulated"), useful for walking through the flow but not for judging analysis quality.
+Then, under Settings, choose the OpenAI-compatible interface, set the endpoint to `http://127.0.0.1:11555/v1`, enable local model mode and enter any key. Its output is fixed synthetic text marked [mock], useful for walking through the flow but not for judging analysis quality.
 
 ## Commands
 
@@ -97,7 +97,7 @@ Backup, restore and upgrade steps are in [docs/recovery.md](docs/recovery.md) (C
 | Local access: one-time setup codes, scrypt passphrase, hashed sessions, immediate invalidation on reset | `packages/db/src/access.ts`, `scripts/` |
 | Products, versioned sources, verbatim requests, analysis scope, permanent deletion that scrubs saved reports | `packages/db/src/services` |
 | Claims written by hand, validated like model output; accept, correct and reject with optimistic locking | `packages/db/src/services/claims.ts` |
-| Immutable report versions; Markdown report and spec summary with Chinese or English headings | `packages/db/src/services/reports.ts` |
+| Immutable report versions; Markdown report and spec summary | `packages/db/src/services/reports.ts` |
 | Product ZIP export and import: checksums, content hashes, path and size limits, full id remapping | `packages/db/src/services/portability.ts` |
 | Web workbench: products, source viewer with line numbers and citation highlights, requests, three-step analysis page, reports, import, diagnostics | `apps/web` |
 | Loopback only, Host checks, cross-site write rejection, HttpOnly and SameSite=Strict sessions | `apps/web/proxy.ts` |
@@ -114,7 +114,6 @@ Backup, restore and upgrade steps are in [docs/recovery.md](docs/recovery.md) (C
 
 - **Rest of M2:** evaluation set and validation with a real model (M2's exit criterion, not yet met), daily token soft budget.
 - **M3:** local memory pages for confirming nodes and relations, impact check page (the graph query itself is done), impact inference.
-- English web interface.
 - Whole-instance backup and restore scripts (manual steps for now), keeping original text uploads (only normalized text is stored; screenshots keep the original), deleting requests, narrow-screen evidence drawer, duplicate hints during bulk entry.
 - `CHANGELOG`.
 

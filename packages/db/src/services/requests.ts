@@ -40,7 +40,7 @@ function cleanFields(fields: RequestFields = {}): Record<string, string> {
 async function storeVerbatim(tx: Tx, productId: string, sourceId: string, version: number, text: string) {
   const ingested = ingestOrThrow(text);
   if (charCount(ingested.text) > MAX_REQUEST_PASTE_CHARS) {
-    throw new AppError("invalid_input", `单条需求原文最多 ${MAX_REQUEST_PASTE_CHARS.toLocaleString()} 字符，请拆分`);
+    throw new AppError("invalid_input", `A request can have at most ${MAX_REQUEST_PASTE_CHARS.toLocaleString("en-US")} characters; split it up`);
   }
   const versionId = newId("sv");
   await tx.insert(sourceVersions).values({
@@ -83,9 +83,9 @@ export async function findDuplicateRequests(db: Db, productId: string, text: str
 
 /** Creates a batch atomically. Re-sending the same batch key returns the first result (F03 idempotency). */
 export async function createRequests(db: Db, productId: string, batchKey: string, items: NewRequest[]) {
-  if (!items.length) throw new AppError("invalid_input", "没有要创建的需求");
-  if (items.length > 50) throw new AppError("invalid_input", "一次最多创建 50 条需求");
-  if (!batchKey) throw new AppError("invalid_input", "缺少幂等键");
+  if (!items.length) throw new AppError("invalid_input", "No requests to create");
+  if (items.length > 50) throw new AppError("invalid_input", "At most 50 requests at a time");
+  if (!batchKey) throw new AppError("invalid_input", "Missing idempotency key");
   const ids = await db.transaction(async (tx) => {
     const existing = await tx
       .select({ id: requests.id })
@@ -96,7 +96,7 @@ export async function createRequests(db: Db, productId: string, batchKey: string
     const created: string[] = [];
     for (const item of items) {
       const party = item.party.trim();
-      if (!party) throw new AppError("invalid_input", "每条需求都需要填写业务方");
+      if (!party) throw new AppError("invalid_input", "Every request needs a party");
       const fields = cleanFields(item.fields);
       const sourceId = newId("src");
       await tx.insert(sources).values({
@@ -157,7 +157,7 @@ export async function listRequests(db: Db, productId: string, ids?: string[]) {
 
 export async function getRequest(db: Db, productId: string, requestId: string) {
   const [row] = await listRequests(db, productId, [requestId]);
-  if (!row) throw notFound("需求");
+  if (!row) throw notFound("Request");
   return row;
 }
 
@@ -169,7 +169,7 @@ export async function updateRequestFields(
   input: { party: string; fields: RequestFields },
 ) {
   const party = input.party.trim();
-  if (!party) throw new AppError("invalid_input", "业务方不能为空");
+  if (!party) throw new AppError("invalid_input", "The party cannot be empty");
   const updated = await db
     .update(requests)
     .set({ party, fields: cleanFields(input.fields), revision: expectedRevision + 1, updatedAt: new Date() })

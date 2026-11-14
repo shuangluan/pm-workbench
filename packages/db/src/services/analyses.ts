@@ -9,7 +9,7 @@ import { touchProduct } from "./products";
 
 export async function createAnalysis(db: Db, productId: string, input: { title: string; goal?: string; changeDescription?: string }) {
   const title = input.title.trim();
-  if (!title) throw new AppError("invalid_input", "分析标题不能为空");
+  if (!title) throw new AppError("invalid_input", "The analysis needs a title");
   const [row] = await db
     .insert(analyses)
     .values({ id: newId("ana"), productId, title, goal: input.goal?.trim() ?? "", changeDescription: input.changeDescription?.trim() ?? "" })
@@ -24,7 +24,7 @@ export async function listAnalyses(db: Db, productId: string) {
 
 export async function getAnalysis(db: Db, productId: string, analysisId: string) {
   const [analysis] = await db.select().from(analyses).where(and(eq(analyses.productId, productId), eq(analyses.id, analysisId)));
-  if (!analysis) throw notFound("分析任务");
+  if (!analysis) throw notFound("Analysis");
   const requestIds = (
     await db
       .select({ id: analysisRequests.requestId })
@@ -51,7 +51,7 @@ export async function getAnalysis(db: Db, productId: string, analysisId: string)
 }
 
 function assertEditable(status: AnalysisStatus) {
-  if (status === "archived") throw new AppError("invalid_input", "已归档的分析不能修改，请先取消归档");
+  if (status === "archived") throw new AppError("invalid_input", "An archived analysis cannot be changed. Unarchive it first.");
 }
 
 export async function updateAnalysis(
@@ -64,7 +64,7 @@ export async function updateAnalysis(
   const current = await getAnalysis(db, productId, analysisId);
   assertEditable(current.status);
   const title = input.title.trim();
-  if (!title) throw new AppError("invalid_input", "分析标题不能为空");
+  if (!title) throw new AppError("invalid_input", "The analysis needs a title");
   const updated = await db
     .update(analyses)
     .set({ title, goal: input.goal.trim(), changeDescription: input.changeDescription.trim(), revision: expectedRevision + 1, updatedAt: new Date() })
@@ -93,8 +93,8 @@ export async function setAnalysisScope(
       .select({ id: sourceVersions.id, validity: sourceVersions.validity })
       .from(sourceVersions)
       .where(and(eq(sourceVersions.productId, productId), inArray(sourceVersions.id, versionIds)));
-    if (versions.length !== versionIds.length) throw notFound("资料版本");
-    if (versions.some((v) => v.validity === "source_deleted")) throw new AppError("invalid_input", "不能选择已删除的资料");
+    if (versions.length !== versionIds.length) throw notFound("Source version");
+    if (versions.some((v) => v.validity === "source_deleted")) throw new AppError("invalid_input", "A deleted source cannot be selected");
   }
   await db.transaction(async (tx) => {
     const updated = await tx

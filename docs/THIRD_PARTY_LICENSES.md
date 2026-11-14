@@ -1,12 +1,12 @@
-# 第三方依赖许可清单
+# Third-party licenses
 
-本项目以 AGPL-3.0-only 发布。下表列出生产运行时安装的依赖，由 `npm run licenses` 根据实际安装结果生成，请勿手工修改。开发工具（测试、类型检查、迁移生成）不随应用分发，未列入。
+This project is released under AGPL-3.0-only. The tables below list the dependencies installed for production use. They are generated from the actual install by `npm run licenses`; do not edit by hand. Development tools (tests, type checking, migration generation) are not distributed with the app and are not listed.
 
-许可证以各依赖 `package.json` 的声明为准；各依赖的完整许可文本随其包分发。
+Licenses are as declared in each dependency's `package.json`; the full license text ships with each package.
 
-## 汇总
+## Summary
 
-| 许可证 | 数量 |
+| License | Count |
 | --- | --- |
 | MIT | 34 |
 | Apache-2.0 | 8 |
@@ -18,9 +18,9 @@
 | BSD-3-Clause | 1 |
 | 0BSD | 1 |
 
-## 明细
+## Packages
 
-| 依赖 | 版本 | 许可证 | 仓库 |
+| Package | Version | License | Repository |
 | --- | --- | --- | --- |
 | @anthropic-ai/sdk | 0.135.0 | MIT | https://github.com/anthropics/anthropic-sdk-typescript |
 | @babel/runtime | 7.29.10 | MIT | https://github.com/babel/babel |

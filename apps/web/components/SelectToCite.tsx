@@ -77,14 +77,14 @@ export function SelectToCite({
     <div ref={ref} className="select-to-cite">
       {children}
       {pending ? (
-        <div className="cite-popover" style={{ top: pending.top, left: pending.left }} role="toolbar" aria-label="引用所选文字">
+        <div className="cite-popover" style={{ top: pending.top, left: pending.left }} role="toolbar" aria-label="Cite the selected text">
           {analysisId ? (
             <button type="button" className="btn btn-primary" disabled={busy} onMouseDown={(e) => e.preventDefault()} onClick={() => cite(true)}>
-              以此为依据添加条目
+              Add a claim based on this
             </button>
           ) : null}
           <button type="button" className="btn btn-secondary" disabled={busy} onMouseDown={(e) => e.preventDefault()} onClick={() => cite(false)}>
-            添加引用
+            Add citation
           </button>
           {error ? <span className="error">{error}</span> : null}
         </div>

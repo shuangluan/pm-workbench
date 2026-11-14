@@ -117,7 +117,7 @@ interface ParsedArchive {
 
 /** Validates the archive completely without touching the database. */
 export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
-  if (zip.byteLength > LIMITS.zipBytes) throw reject("导入包超过 100 MB");
+  if (zip.byteLength > LIMITS.zipBytes) throw reject("The import file is larger than 100 MB");
   let fileCount = 0;
   let declared = 0;
   let entries: Record<string, Uint8Array>;
@@ -126,44 +126,44 @@ export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
       filter(file) {
         fileCount++;
         declared += file.originalSize;
-        if (fileCount > LIMITS.files) throw reject("导入包文件数超过 2,000");
-        if (declared > LIMITS.unzippedBytes) throw reject("导入包解压后超过 200 MB");
-        if (!ALLOWED_PATH.test(file.name)) throw reject("导入包含有不允许的路径", { path: file.name.slice(0, 200) });
+        if (fileCount > LIMITS.files) throw reject("The import file has more than 2,000 files");
+        if (declared > LIMITS.unzippedBytes) throw reject("The import file is larger than 200 MB uncompressed");
+        if (!ALLOWED_PATH.test(file.name)) throw reject("The import file contains a path that is not allowed", { path: file.name.slice(0, 200) });
         return true;
       },
     });
   } catch (err) {
     if (err instanceof AppError) throw err;
-    throw reject("无法读取 ZIP 文件");
+    throw reject("Cannot read the ZIP file");
   }
   const actual = Object.values(entries).reduce((n, b) => n + b.byteLength, 0);
-  if (actual > LIMITS.unzippedBytes) throw reject("导入包解压后超过 200 MB");
+  if (actual > LIMITS.unzippedBytes) throw reject("The import file is larger than 200 MB uncompressed");
 
   const manifestBytes = entries["manifest.json"];
-  if (!manifestBytes) throw reject("缺少 manifest.json");
+  if (!manifestBytes) throw reject("manifest.json is missing");
   let manifest: Manifest;
   try {
     manifest = JSON.parse(strFromU8(manifestBytes)) as Manifest;
   } catch {
-    throw reject("manifest.json 不是有效的 JSON");
+    throw reject("manifest.json is not valid JSON");
   }
-  if (manifest.format !== EXPORT_FORMAT) throw reject("不是本工具导出的产品包");
+  if (manifest.format !== EXPORT_FORMAT) throw reject("This is not a product export from this tool");
   if (manifest.schemaVersion !== EXPORT_SCHEMA_VERSION) {
-    throw reject(`不支持的导出格式版本 ${manifest.schemaVersion}，当前支持 ${EXPORT_SCHEMA_VERSION}`);
+    throw reject(`Unsupported export format version ${manifest.schemaVersion}; this version supports ${EXPORT_SCHEMA_VERSION}`);
   }
   const listed = new Set(Object.keys(manifest.files ?? {}));
   for (const path of Object.keys(entries)) {
     if (path === "manifest.json") continue;
-    if (!listed.has(path)) throw reject("导入包含有清单外的文件", { path });
-    if (sha256Bytes(entries[path]!) !== manifest.files[path]) throw reject("文件校验和不一致", { path });
+    if (!listed.has(path)) throw reject("The import file contains a file not in its manifest", { path });
+    if (sha256Bytes(entries[path]!) !== manifest.files[path]) throw reject("File checksum mismatch", { path });
   }
-  for (const path of listed) if (!entries[path]) throw reject("清单中的文件缺失", { path });
+  for (const path of listed) if (!entries[path]) throw reject("A file listed in the manifest is missing", { path });
 
   const json = (path: string) => {
     try {
       return JSON.parse(strFromU8(entries[path]!)) as unknown;
     } catch {
-      throw reject("数据文件不是有效的 JSON", { path });
+      throw reject("A data file is not valid JSON", { path });
     }
   };
   const product = json("data/product.json") as Row;
@@ -172,8 +172,8 @@ export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
   for (const name of Object.keys(TABLES) as TableName[]) {
     const path = `data/${name}.json`;
     const rows = entries[path] ? json(path) : [];
-    if (!Array.isArray(rows)) throw reject("数据文件格式错误", { path });
-    if (rows.some((r) => (r as Row).productId !== productId)) throw reject("数据中混有其他产品的记录", { table: name });
+    if (!Array.isArray(rows)) throw reject("A data file has the wrong format", { path });
+    if (rows.some((r) => (r as Row).productId !== productId)) throw reject("The data mixes in records from another product", { table: name });
     tables[name] = rows as Row[];
   }
   const texts = new Map<string, string>();
@@ -183,15 +183,15 @@ export function inspectProductArchive(zip: Uint8Array): ParsedArchive {
     if (typeof v.mediaType === "string") {
       const path = Object.keys(entries).find((p) => p.startsWith(`files/${v.id}.`));
       const bytes = path ? entries[path] : undefined;
-      if (!bytes) throw reject("缺少截图文件", { sourceVersionId: v.id });
-      if (sniffImage(bytes) !== v.mediaType || sha256Bytes(bytes) !== v.contentHash) throw reject("截图与记录的类型或哈希不一致", { sourceVersionId: v.id });
+      if (!bytes) throw reject("A screenshot file is missing", { sourceVersionId: v.id });
+      if (sniffImage(bytes) !== v.mediaType || sha256Bytes(bytes) !== v.contentHash) throw reject("A screenshot does not match its recorded type or hash", { sourceVersionId: v.id });
       images.set(v.id as string, bytes);
       continue;
     }
     const bytes = entries[`texts/${v.id}.txt`];
-    if (!bytes) throw reject("缺少资料原文", { sourceVersionId: v.id });
+    if (!bytes) throw reject("A source text is missing", { sourceVersionId: v.id });
     const text = strFromU8(bytes);
-    if (sha256(text) !== v.contentHash) throw reject("资料原文与内容哈希不一致", { sourceVersionId: v.id });
+    if (sha256(text) !== v.contentHash) throw reject("A source text does not match its content hash", { sourceVersionId: v.id });
     texts.set(v.id as string, text);
   }
   return {
@@ -254,7 +254,7 @@ export async function importProductArchive(db: Db, dataDir: string, zip: Uint8Ar
     await db.transaction(async (tx) => {
       await tx.insert(s.products).values({
         id: productId,
-        name: `${String(parsed.product.name).slice(0, 100)}（导入）`,
+        name: `${String(parsed.product.name).slice(0, 100)} (imported)`,
         description: String(parsed.product.description ?? ""),
         isExample: false,
       });

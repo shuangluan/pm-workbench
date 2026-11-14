@@ -154,11 +154,11 @@ export async function previewAbstraction(db: Db, productId: string, analysisId: 
   const max = config ? estimateCost({ inputTokens, outputTokens: config.outputLimit }, pricing) : null;
 
   const blockers: string[] = [];
-  if (!config?.hasKey) blockers.push("尚未配置模型");
-  if (requests.length < MIN_ABSTRACTION_REQUESTS) blockers.push(`至少选择 ${MIN_ABSTRACTION_REQUESTS} 条需求才能做抽象`);
-  if (requests.length > MAX_ABSTRACTION_REQUESTS) blockers.push(`一次最多 ${MAX_ABSTRACTION_REQUESTS} 条需求，请缩小范围`);
-  if (budget && !budget.ok) blockers.push(`输入超出模型预算约 ${budget.overBy.toLocaleString()} tokens，请减少资料`);
-  if (analysis.status === "archived") blockers.push("已归档的分析不能运行");
+  if (!config?.hasKey) blockers.push("No model is configured");
+  if (requests.length < MIN_ABSTRACTION_REQUESTS) blockers.push(`Choose at least ${MIN_ABSTRACTION_REQUESTS} requests for an abstraction`);
+  if (requests.length > MAX_ABSTRACTION_REQUESTS) blockers.push(`At most ${MAX_ABSTRACTION_REQUESTS} requests at a time; narrow the scope`);
+  if (budget && !budget.ok) blockers.push(`The input is about ${budget.overBy.toLocaleString("en-US")} tokens over the model's budget; select less material`);
+  if (analysis.status === "archived") blockers.push("An archived analysis cannot run");
 
   return {
     configured: !!config?.hasKey,
@@ -175,7 +175,7 @@ export async function previewAbstraction(db: Db, productId: string, analysisId: 
 }
 
 async function enqueue(db: Db, productId: string, analysisId: string, taskType: "abstraction" | "split_requests" | "transcribe_image", key: string, input: RunInput, retryOf?: string) {
-  if (!/^[0-9a-f-]{36}$/.test(key)) throw new AppError("invalid_input", "缺少幂等键");
+  if (!/^[0-9a-f-]{36}$/.test(key)) throw new AppError("invalid_input", "Missing idempotency key");
   const id = newId("run");
   const [row] = await db
     .insert(analysisRuns)
@@ -194,7 +194,7 @@ function modelRef(config: NonNullable<Awaited<ReturnType<typeof getModelConfig>>
 
 async function requireModel(db: Db) {
   const config = await getModelConfig(db);
-  if (!config?.hasKey) throw new AppError("not_initialized", "请先在“设置与诊断”中配置模型");
+  if (!config?.hasKey) throw new AppError("not_initialized", "Configure a model under Settings first");
   return config;
 }
 
@@ -220,8 +220,8 @@ export async function startTranscribe(db: Db, productId: string, analysisId: str
     .select({ id: sourceVersions.id, mediaType: sourceVersions.mediaType, validity: sourceVersions.validity })
     .from(sourceVersions)
     .where(and(eq(sourceVersions.productId, productId), eq(sourceVersions.id, imageVersionId)));
-  if (!image?.mediaType) throw notFound("截图");
-  if (image.validity !== "valid") throw new AppError("invalid_input", "只能读取当前有效的截图");
+  if (!image?.mediaType) throw notFound("Screenshot");
+  if (image.validity !== "valid") throw new AppError("invalid_input", "Only the current version of a screenshot can be read");
   return enqueue(db, productId, analysisId, "transcribe_image", key, {
     templateVersion: TEMPLATE_VERSIONS.transcribe_image,
     model: modelRef(config),
@@ -235,10 +235,10 @@ export async function startSplit(db: Db, productId: string, analysisId: string, 
   const config = await requireModel(db);
   await getAnalysis(db, productId, analysisId);
   const body = text.trim();
-  if (!body) throw new AppError("invalid_input", "没有可拆分的文字");
-  if (body.length > 20_000) throw new AppError("invalid_input", "单次最多 20,000 字符，请分批");
+  if (!body) throw new AppError("invalid_input", "There is no text to split");
+  if (body.length > 20_000) throw new AppError("invalid_input", "At most 20,000 characters at a time; split it into batches");
   const budget = checkBudget({ inputTokens: estimateTokens(SPLIT_SYSTEM) + estimateTokens(splitPrompt(body)), contextLimit: config.contextLimit, outputLimit: config.outputLimit });
-  if (!budget.ok) throw new AppError("invalid_input", `输入超出模型预算约 ${budget.overBy.toLocaleString()} tokens`);
+  if (!budget.ok) throw new AppError("invalid_input", `The input is about ${budget.overBy.toLocaleString("en-US")} tokens over the model's budget`);
   return enqueue(db, productId, analysisId, "split_requests", key, {
     templateVersion: TEMPLATE_VERSIONS.split_requests,
     model: modelRef(config),
@@ -256,17 +256,17 @@ export async function cancelRun(db: Db, productId: string, runId: string) {
     .set({ status: "canceled", finishedAt: new Date() })
     .where(and(eq(analysisRuns.productId, productId), eq(analysisRuns.id, runId), inArray(analysisRuns.status, ["queued", "running"])))
     .returning({ id: analysisRuns.id });
-  if (!updated.length) throw new AppError("conflict", "任务已经结束");
+  if (!updated.length) throw new AppError("conflict", "The run has already finished");
 }
 
 /** A retry is a new run over the same frozen input, linked to the original. */
 export async function retryRun(db: Db, productId: string, runId: string, key: string) {
   const [run] = await db.select().from(analysisRuns).where(and(eq(analysisRuns.productId, productId), eq(analysisRuns.id, runId)));
-  if (!run) throw notFound("任务");
-  if (!["failed", "interrupted", "canceled"].includes(run.status)) throw new AppError("conflict", "只能重试已结束但未成功的任务");
+  if (!run) throw notFound("Run");
+  if (!["failed", "interrupted", "canceled"].includes(run.status)) throw new AppError("conflict", "Only a finished run that did not succeed can be retried");
   const input = run.inputSnapshot as RunInput;
-  if (input.scrubbed) throw new AppError("invalid_input", "这次任务的部分来源已删除，请重新发起");
-  if (run.taskType !== "abstraction" && run.taskType !== "split_requests" && run.taskType !== "transcribe_image") throw new AppError("invalid_input", "这类任务不能重试");
+  if (input.scrubbed) throw new AppError("invalid_input", "Some sources of this run were deleted; start a new run instead");
+  if (run.taskType !== "abstraction" && run.taskType !== "split_requests" && run.taskType !== "transcribe_image") throw new AppError("invalid_input", "This kind of run cannot be retried");
   return enqueue(db, productId, run.analysisId, run.taskType, key, input, run.id);
 }
 

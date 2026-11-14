@@ -8,16 +8,16 @@ import { noRedirectFetch, validateEndpoint } from "./endpoint";
 import { ModelError, type ModelEndpoint, type ModelRequest, type ModelResponse } from "./types";
 
 function mapError(err: unknown): ModelError {
-  if (err instanceof Anthropic.APIUserAbortError) return new ModelError("canceled", "已取消");
-  if (err instanceof Anthropic.APIConnectionTimeoutError) return new ModelError("outcome_unknown", "请求超时，模型服务可能已经执行并计费");
-  if (err instanceof Anthropic.APIConnectionError) return new ModelError("network", "无法连接模型服务");
-  if (err instanceof Anthropic.AuthenticationError) return new ModelError("auth", "密钥无效", 401);
-  if (err instanceof Anthropic.PermissionDeniedError) return new ModelError("auth", "该密钥没有使用此模型的权限", 403);
-  if (err instanceof Anthropic.NotFoundError) return new ModelError("model_not_found", "模型不存在，或该账号无法使用", 404);
-  if (err instanceof Anthropic.RateLimitError) return new ModelError("rate_limited", "请求过于频繁，或已达到额度上限", 429);
-  if (err instanceof Anthropic.BadRequestError) return new ModelError("unsupported_format", `模型服务拒绝了请求：${err.message}`.slice(0, 300), 400);
-  if (err instanceof Anthropic.InternalServerError) return new ModelError("network", "模型服务暂时不可用", err.status);
-  if (err instanceof Anthropic.APIError) return new ModelError("network", `模型服务返回错误 ${err.status ?? ""}`.trim(), err.status);
+  if (err instanceof Anthropic.APIUserAbortError) return new ModelError("canceled", "Canceled");
+  if (err instanceof Anthropic.APIConnectionTimeoutError) return new ModelError("outcome_unknown", "The request timed out; the provider may already have run and billed it");
+  if (err instanceof Anthropic.APIConnectionError) return new ModelError("network", "Cannot reach the model service");
+  if (err instanceof Anthropic.AuthenticationError) return new ModelError("auth", "The key was rejected", 401);
+  if (err instanceof Anthropic.PermissionDeniedError) return new ModelError("auth", "This key is not allowed to use this model", 403);
+  if (err instanceof Anthropic.NotFoundError) return new ModelError("model_not_found", "The model does not exist, or this account cannot use it", 404);
+  if (err instanceof Anthropic.RateLimitError) return new ModelError("rate_limited", "Too many requests, or the quota is used up", 429);
+  if (err instanceof Anthropic.BadRequestError) return new ModelError("unsupported_format", `The model service rejected the request: ${err.message}`.slice(0, 300), 400);
+  if (err instanceof Anthropic.InternalServerError) return new ModelError("network", "The model service is temporarily unavailable", err.status);
+  if (err instanceof Anthropic.APIError) return new ModelError("network", `The model service returned error ${err.status ?? ""}`.trim(), err.status);
   throw err;
 }
 
@@ -54,8 +54,8 @@ export async function callAnthropic(config: ModelEndpoint, request: ModelRequest
   } catch (err) {
     throw mapError(err);
   }
-  if (response.stop_reason === "refusal") throw new ModelError("refused", "模型拒绝处理这次请求");
-  if (response.stop_reason === "max_tokens") throw new ModelError("truncated", "输出被截断，请在设置中调高输出上限");
+  if (response.stop_reason === "refusal") throw new ModelError("refused", "The model refused this request");
+  if (response.stop_reason === "max_tokens") throw new ModelError("truncated", "The output was cut off; raise the output limit under Settings");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   return { text, model: response.model, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens };
 }

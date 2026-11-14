@@ -13,17 +13,17 @@ export interface RequestRow {
 }
 
 const MODE_LABEL: Record<SplitMode, string> = {
-  table: "表格",
-  speaker: "按发言人 / 业务方",
-  list: "编号或项目符号列表",
-  paragraph: "按空行分段",
+  table: "a table",
+  speaker: "speakers or parties",
+  list: "a numbered or bulleted list",
+  paragraph: "paragraphs",
 };
 
-const PLACEHOLDER = `支持以下任意一种，直接粘贴即可：
-· 从 Excel / 飞书表格复制的整块表格（含表头更准）
-· 聊天记录：“王运营 10:02”下一行是消息
-· 每行“业务方：原话”
-· 编号列表，或用空行分隔的段落`;
+const PLACEHOLDER = `Paste any of these:
+· a table copied from Excel or a sheet (a header row helps)
+· a chat log: "Dana 10:02" with the message on the next line
+· one "Party: request" per line
+· a numbered list, or paragraphs separated by blank lines`;
 
 let seq = 0;
 const key = () => `r${++seq}`;
@@ -51,20 +51,20 @@ export function RequestImporter({
 
   const runModelSplit = async () => {
     if (!modelSplit || !text.trim()) return;
-    if (rows.length && !window.confirm("用模型结果替换下方已编辑的预览？")) return;
+    if (rows.length && !window.confirm("Replace the edited preview below with the model's result?")) return;
     setSplitting(true);
     setModelError(null);
     const r = await modelSplit(text);
     setSplitting(false);
     if ("error" in r) return setModelError(r.error);
-    setMode("模型拆分（请核对）");
+    setMode("the model (please check)");
     setTruncated(false);
     setQuestions(r.questions);
     onChange(r.requests.map((c) => ({ key: key(), party: c.party, title: c.title, text: c.text })));
   };
 
   const apply = (result: ReturnType<typeof splitRequests>, label: string) => {
-    if (rows.length && !window.confirm("用新的识别结果替换下方已编辑的预览？")) return;
+    if (rows.length && !window.confirm("Replace the edited preview below with the new split?")) return;
     setMode(label);
     setTruncated(result.truncated);
     onChange(result.candidates.map((c) => ({ key: key(), party: c.party ?? "", title: c.title ?? "", text: c.text })));
@@ -78,7 +78,7 @@ export function RequestImporter({
 
   const readCsv = async (file: File) => {
     const raw = await file.text();
-    apply(splitTable(parseCsv(raw)), `CSV 文件“${file.name}”`);
+    apply(splitTable(parseCsv(raw)), `CSV file "${file.name}"`);
   };
 
   // Text handed over from elsewhere (e.g. a screenshot transcript) is split right away.
@@ -101,7 +101,7 @@ export function RequestImporter({
     <div className="importer">
       <div className="field">
         <label htmlFor={`${uid}-paste`} className="label">
-          粘贴需求
+          Paste requests
         </label>
         <textarea
           id={`${uid}-paste`}
@@ -117,15 +117,15 @@ export function RequestImporter({
       </div>
       <div className="form-actions">
         <button type="button" className="btn btn-secondary" onClick={() => split()} disabled={!text.trim()}>
-          识别拆分
+          Split
         </button>
         {modelSplit ? (
           <button type="button" className="btn btn-secondary" onClick={() => void runModelSplit()} disabled={!text.trim() || splitting}>
-            {splitting ? "模型拆分中…" : "用模型拆分"}
+            {splitting ? "Splitting with model…" : "Split with model"}
           </button>
         ) : null}
         <label className="btn btn-secondary file-btn">
-          上传 CSV
+          Upload CSV
           <input
             type="file"
             accept=".csv,text/csv"
@@ -137,25 +137,25 @@ export function RequestImporter({
             }}
           />
         </label>
-        <span className="help">Excel 表格可以直接复制粘贴，不必另存为 CSV。</span>
+        <span className="help">You can paste straight from Excel; no need to save as CSV.</span>
       </div>
       {modelError ? <p className="error">{modelError}</p> : null}
 
       {rows.length || mode ? (
-        <section className="preview" aria-label="拆分预览">
+        <section className="preview" aria-label="Split preview">
           <p className="preview-head">
-            <strong>预览：{rows.length} 条需求</strong>
-            {mode ? <span className="muted"> · 识别为{mode}</span> : null}
-            {truncated ? <span className="warn"> · 只保留了前 50 条，请分批导入</span> : null}
+            <strong>Preview: {rows.length === 1 ? "1 request" : `${rows.length} requests`}</strong>
+            {mode ? <span className="muted"> · split as {mode}</span> : null}
+            {truncated ? <span className="warn"> · only the first 50 were kept; import the rest separately</span> : null}
           </p>
-          <p className="help">原话会原样保存；请检查拆分是否合理，可以直接修改、删除或补充。</p>
+          <p className="help">The original text is saved exactly as written. Check the split, and edit, remove or add requests as needed.</p>
           {missing ? (
             <div className="form-actions">
-              <span className="warn">{missing} 条缺少业务方。</span>
+              <span className="warn">{missing === 1 ? "1 request has" : `${missing} requests have`} no party.</span>
               <input
                 type="text"
-                aria-label="统一填写业务方"
-                placeholder="统一填写为…"
+                aria-label="Party for all empty rows"
+                placeholder="Fill in as…"
                 value={defaultParty}
                 onChange={(e) => setDefaultParty(e.target.value)}
                 className="inline-input"
@@ -166,7 +166,7 @@ export function RequestImporter({
                 disabled={!defaultParty.trim()}
                 onClick={() => onChange(rows.map((r) => (r.party.trim() ? r : { ...r, party: defaultParty.trim() })))}
               >
-                填入空缺
+                Fill empty rows
               </button>
             </div>
           ) : null}
@@ -174,22 +174,22 @@ export function RequestImporter({
             {rows.map((r, i) => (
               <li key={r.key} className={r.party.trim() ? "row" : "row row-missing"}>
                 <div className="row-meta">
-                  <input aria-label={`第 ${i + 1} 条的业务方`} placeholder="业务方" value={r.party} onChange={(e) => update(r.key, { party: e.target.value })} />
-                  <input aria-label={`第 ${i + 1} 条的标题`} placeholder="标题（可选）" value={r.title} onChange={(e) => update(r.key, { title: e.target.value })} />
-                  <button type="button" className="linklike danger" onClick={() => onChange(rows.filter((x) => x.key !== r.key))} aria-label={`删除第 ${i + 1} 条`}>
-                    删除
+                  <input aria-label={`Party of request ${i + 1}`} placeholder="Party" value={r.party} onChange={(e) => update(r.key, { party: e.target.value })} />
+                  <input aria-label={`Title of request ${i + 1}`} placeholder="Title (optional)" value={r.title} onChange={(e) => update(r.key, { title: e.target.value })} />
+                  <button type="button" className="linklike danger" onClick={() => onChange(rows.filter((x) => x.key !== r.key))} aria-label={`Remove request ${i + 1}`}>
+                    Remove
                   </button>
                 </div>
-                <textarea aria-label={`第 ${i + 1} 条的原话`} rows={Math.min(6, Math.max(2, r.text.split("\n").length))} value={r.text} onChange={(e) => update(r.key, { text: e.target.value })} />
+                <textarea aria-label={`Original text of request ${i + 1}`} rows={Math.min(6, Math.max(2, r.text.split("\n").length))} value={r.text} onChange={(e) => update(r.key, { text: e.target.value })} />
               </li>
             ))}
           </ol>
           <button type="button" className="btn btn-secondary" onClick={() => onChange([...rows, { key: key(), party: defaultParty, title: "", text: "" }])}>
-            添加一条
+            Add a request
           </button>
           {questions.length ? (
             <div className="section">
-              <p className="label">可以追问提出方（复制后自行发送）：</p>
+              <p className="label">Questions you could ask (copy and send them yourself):</p>
               <ul className="list compact">
                 {questions.map((q) => (
                   <li key={q}>{q}</li>

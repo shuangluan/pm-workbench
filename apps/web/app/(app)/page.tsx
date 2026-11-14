@@ -14,36 +14,36 @@ export default async function ProductsPage() {
     <>
       <section className="hero">
         <div>
-          <h1>把一堆需求整理成有依据的分析</h1>
-          <p>粘贴聊天记录、表格或截图，加上相关规则文档，整理出每条结论都能追溯到原文的分析报告，并列出需要决策、补充和验证的事项。所有内容只保存在本机。</p>
+          <h1>Turn scattered requests into an evidence-based analysis</h1>
+          <p>Paste chat logs, tables or screenshots plus the relevant rules, and get a report where every claim traces back to the original text, along with the decisions, missing material and checks still needed. Everything stays on this machine.</p>
         </div>
         <div className="hero-actions">
           <Link href="/start" className="btn btn-primary btn-large">
-            快速开始一次分析
+            Quick start an analysis
           </Link>
           {example ? (
             <Link href={`/p/${example.id}`} className="btn btn-secondary">
-              看看示例结果
+              See the example
             </Link>
           ) : (
-            <Form action={loadExampleAction} submit="先看示例结果" tone="secondary" fields={[]} />
+            <Form action={loadExampleAction} submit="See the example first" tone="secondary" fields={[]} />
           )}
         </div>
       </section>
 
-      <h2>产品</h2>
-      <p className="muted">每个产品有独立的资料、需求、局部记忆和分析。产品之间不会互相引用。</p>
+      <h2>Products</h2>
+      <p className="muted">Each product has its own sources, requests, memory and analyses. Products never reference each other.</p>
 
       {products.length ? (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th scope="col">名称</th>
-                <th scope="col">分析</th>
-                <th scope="col">资料</th>
-                <th scope="col">最近任务</th>
-                <th scope="col">更新</th>
+                <th scope="col">Name</th>
+                <th scope="col">Analyses</th>
+                <th scope="col">Sources</th>
+                <th scope="col">Last analysis</th>
+                <th scope="col">Updated</th>
               </tr>
             </thead>
             <tbody>
@@ -51,7 +51,7 @@ export default async function ProductsPage() {
                 <tr key={p.id}>
                   <td>
                     <Link href={`/p/${p.id}`}>{p.name}</Link>
-                    {p.isExample ? <span className="tag tag-example">示例</span> : null}
+                    {p.isExample ? <span className="tag tag-example">Example</span> : null}
                   </td>
                   <td>{p.analysisCount}</td>
                   <td>{p.sourceCount}</td>
@@ -63,18 +63,18 @@ export default async function ProductsPage() {
           </table>
         </div>
       ) : (
-        <p className="empty">还没有产品。点“快速开始”时可以顺便新建。</p>
+        <p className="empty">No products yet. Quick start can create one for you.</p>
       )}
 
       <details className="disclosure">
-        <summary>只创建一个空产品</summary>
+        <summary>Just create an empty product</summary>
         <section className="card">
           <Form
             action={createProductAction}
-            submit="创建"
+            submit="Create"
             fields={[
-              { name: "name", label: "产品名称", type: "text", required: true, maxLength: 120, placeholder: "例如：客户管理平台" },
-              { name: "description", label: "说明", type: "textarea", rows: 2 },
+              { name: "name", label: "Product name", type: "text", required: true, maxLength: 120, placeholder: "e.g. Customer platform" },
+              { name: "description", label: "Description", type: "textarea", rows: 2 },
             ]}
           />
         </section>
