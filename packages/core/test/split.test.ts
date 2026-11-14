@@ -76,6 +76,34 @@ describe("splitRequests", () => {
   });
 });
 
+describe("English input", () => {
+  it("splits 'Name: text' lines with multi-word names and roles", () => {
+    const r = splitRequests("Dana Smith (Ops): Export the filtered list.\nLee: We need the whole team's customers.\nMe: For every role?\nLee: Only team leads.");
+    expect(r.mode).toBe("speaker");
+    expect(r.candidates).toEqual([
+      { party: "Dana Smith (Ops)", title: null, text: "Export the filtered list." },
+      { party: "Lee", title: null, text: "Lee: We need the whole team's customers.\nMe: For every role?\nLee: Only team leads." },
+    ]);
+  });
+
+  it("reads chat exports with AM/PM times and weekday stamps", () => {
+    const chat = ["Dana Smith 10:02 AM", "Can we export filtered results?", "Lee Chen, Yesterday 4:15 pm", "Team customers please"].join("\n");
+    expect(splitRequests(chat).candidates.map((c) => [c.party, c.text])).toEqual([
+      ["Dana Smith", "Can we export filtered results?"],
+      ["Lee Chen", "Team customers please"],
+    ]);
+  });
+
+  it("does not take an ordinary sentence with a colon for a party", () => {
+    expect(splitRequests("We need this soon, as in: next week.\n\nAnother ask").candidates[0]!.party).toBeNull();
+  });
+
+  it("recognises common English table headers", () => {
+    const r = splitRequests("Requested by\tSummary\tDetails\nOps\tExport\tExport filtered results");
+    expect(r.columns).toEqual({ party: 0, title: 1, text: 2 });
+  });
+});
+
 describe("CSV", () => {
   it("parses quoted fields with commas, quotes and newlines", () => {
     const rows = parseCsv('业务方,原话\r\n运营,"导出筛选结果, 每周"\n客服,"说""不要""手机号\n第二行"\n');

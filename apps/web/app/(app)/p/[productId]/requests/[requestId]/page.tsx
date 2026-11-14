@@ -20,36 +20,36 @@ export default async function RequestPage({ params }: { params: Promise<{ produc
   ];
   return (
     <>
-      <nav className="crumbs" aria-label="位置">
-        <Link href="/">产品</Link> / <Link href={`/p/${productId}`}>{product.name}</Link> / <span>{fields.title || "需求"}</span>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <Link href="/">Products</Link> / <Link href={`/p/${productId}`}>{product.name}</Link> / <span>{fields.title || "Request"}</span>
       </nav>
-      <h1>{fields.title || "（未命名需求）"}</h1>
+      <h1>{fields.title || "(untitled request)"}</h1>
       <p className="muted">
-        {r.party} · 创建于 {fmtDate(r.createdAt)} · 原话 v{r.version}（{VALIDITY[r.validity]}）
-        {r.sourceName ? ` · 来源：${r.sourceName}` : ""}
+        {r.party} · created {fmtDate(r.createdAt)} · original text v{r.version} ({VALIDITY[r.validity]})
+        {r.sourceName ? ` · source: ${r.sourceName}` : ""}
       </p>
-      <blockquote className="verbatim">{r.originalText ?? "［来源已删除］"}</blockquote>
+      <blockquote className="verbatim">{r.originalText ?? "[source deleted]"}</blockquote>
       <p>
-        <Link href={`/p/${productId}/sources/${r.sourceId}`}>查看原话的全部版本</Link>
+        <Link href={`/p/${productId}/sources/${r.sourceId}`}>See all versions of the original text</Link>
       </p>
 
       <div className="grid-2">
         <section className="card">
-          <h2>整理字段</h2>
+          <h2>Fields</h2>
           <Form
             action={updateRequestAction}
-            submit="保存"
-            fields={[...hidden, { name: "party", label: "业务方", type: "text", required: true, defaultValue: r.party }, ...requestFieldInputs(fields)]}
+            submit="Save"
+            fields={[...hidden, { name: "party", label: "Party", type: "text", required: true, defaultValue: r.party }, ...requestFieldInputs(fields)]}
           />
         </section>
         <section className="card">
-          <h2>修正原话</h2>
-          <p className="help">修正会生成新版本。引用旧原话的结论保持指向旧版本并提示复核。</p>
+          <h2>Correct the original text</h2>
+          <p className="help">A correction creates a new version. Claims citing the old text keep pointing at it and are marked for review.</p>
           <Form
             action={correctRequestTextAction}
-            submit="保存为新版本"
+            submit="Save as new version"
             tone="secondary"
-            fields={[...hidden, { name: "originalText", label: "原话", type: "textarea", rows: 6, required: true, defaultValue: r.originalText ?? "" }]}
+            fields={[...hidden, { name: "originalText", label: "Original text", type: "textarea", rows: 6, required: true, defaultValue: r.originalText ?? "" }]}
           />
         </section>
       </div>

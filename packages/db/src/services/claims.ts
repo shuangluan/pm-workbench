@@ -87,11 +87,11 @@ export interface UserClaimInput {
 
 export async function addUserClaim(db: Db, productId: string, analysisId: string, input: UserClaimInput) {
   const analysis = await getAnalysis(db, productId, analysisId);
-  if (analysis.status === "archived") throw new AppError("invalid_input", "已归档的分析不能修改");
-  if (!CLAIM_SECTIONS.includes(input.section)) throw new AppError("invalid_input", "未知的条目分区");
+  if (analysis.status === "archived") throw new AppError("invalid_input", "An archived analysis cannot be changed");
+  if (!CLAIM_SECTIONS.includes(input.section)) throw new AppError("invalid_input", "Unknown report section");
   const evidenceIds = [...new Set(input.evidenceIds)];
   const rows = await evidenceRows(db, productId, evidenceIds);
-  if (rows.length !== evidenceIds.length) throw notFound("引用");
+  if (rows.length !== evidenceIds.length) throw notFound("Citation");
 
   const registry = new EvidenceRegistry(
     rows.map((r) => ({
@@ -150,13 +150,13 @@ export async function addUserClaim(db: Db, productId: string, analysisId: string
 }
 
 const CLAIM_ISSUE_MESSAGES: Partial<Record<string, string>> = {
-  missing_evidence: "“原文事实”和“推断”至少需要一条引用",
-  missing_reasoning: "“推断”和“建议”需要填写理由",
-  missing_gap: "“未知”需要说明缺少什么、找谁补充",
-  unconfirmed_relation: "“已确认关系”只能引用已确认的关系",
-  evidence_not_current: "引用的资料版本已过期或已删除",
-  text_empty: "内容不能为空",
-  text_too_long: "内容过长",
+  missing_evidence: "A source fact or inference needs at least one citation",
+  missing_reasoning: "An inference or suggestion needs reasoning",
+  missing_gap: "An unknown needs to say what is missing and who can supply it",
+  unconfirmed_relation: "A confirmed relation can only refer to a confirmed relation",
+  evidence_not_current: "The cited source version is outdated or deleted",
+  text_empty: "The text cannot be empty",
+  text_too_long: "The text is too long",
 };
 
 export interface ClaimView extends ClaimRecord {
@@ -220,7 +220,7 @@ export async function listClaims(db: Db, productId: string, analysisId: string):
 /** Review with optimistic locking: the UPDATE only applies if the revision still matches. */
 export async function reviewClaimById(db: Db, productId: string, claimId: string, action: ReviewAction, expectedRevision: number) {
   const [row] = await db.select().from(claims).where(and(eq(claims.productId, productId), eq(claims.id, claimId)));
-  if (!row) throw notFound("条目");
+  if (!row) throw notFound("Claim");
   let next: ClaimRecord;
   try {
     next = reviewClaim(

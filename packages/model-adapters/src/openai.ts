@@ -13,12 +13,12 @@ interface ChatResponse {
 }
 
 function statusError(status: number, detail: string): ModelError {
-  if (status === 401) return new ModelError("auth", "密钥无效", status);
-  if (status === 403) return new ModelError("auth", "该密钥没有使用此模型的权限", status);
-  if (status === 404) return new ModelError("model_not_found", "模型不存在，或端点路径不对", status);
-  if (status === 429) return new ModelError("rate_limited", "请求过于频繁，或已达到额度上限", status);
-  if (status === 400 || status === 422) return new ModelError("unsupported_format", `模型服务拒绝了请求：${detail}`.slice(0, 300), status);
-  return new ModelError("network", `模型服务返回错误 ${status}`, status);
+  if (status === 401) return new ModelError("auth", "The key was rejected", status);
+  if (status === 403) return new ModelError("auth", "This key is not allowed to use this model", status);
+  if (status === 404) return new ModelError("model_not_found", "The model does not exist, or the endpoint path is wrong", status);
+  if (status === 429) return new ModelError("rate_limited", "Too many requests, or the quota is used up", status);
+  if (status === 400 || status === 422) return new ModelError("unsupported_format", `The model service rejected the request: ${detail}`.slice(0, 300), status);
+  return new ModelError("network", `The model service returned error ${status}`, status);
 }
 
 export async function callOpenAICompatible(config: ModelEndpoint, request: ModelRequest): Promise<ModelResponse> {
@@ -51,9 +51,9 @@ export async function callOpenAICompatible(config: ModelEndpoint, request: Model
         signal: request.signal ? AbortSignal.any([request.signal, timeout]) : timeout,
       });
     } catch (err) {
-      if (request.signal?.aborted) throw new ModelError("canceled", "已取消");
-      if (timeout.aborted) throw new ModelError("outcome_unknown", "请求超时，模型服务可能已经执行并计费");
-      throw new ModelError("network", err instanceof Error && /redirect/i.test(String(err.cause ?? err.message)) ? "端点发生了重定向，已拒绝" : "无法连接模型服务");
+      if (request.signal?.aborted) throw new ModelError("canceled", "Canceled");
+      if (timeout.aborted) throw new ModelError("outcome_unknown", "The request timed out; the provider may already have run and billed it");
+      throw new ModelError("network", err instanceof Error && /redirect/i.test(String(err.cause ?? err.message)) ? "The endpoint redirected, which is refused" : "Cannot reach the model service");
     }
     return res;
   };
@@ -68,7 +68,7 @@ export async function callOpenAICompatible(config: ModelEndpoint, request: Model
     else if (/response_format|json_schema/.test(detail) && format === schemaFormat) {
       // Server without schema support: ask for JSON and let our validator check it.
       format = { type: "json_object" };
-      system = `${request.system}\n\n只输出符合此 JSON Schema 的 JSON：\n${JSON.stringify(request.schema)}`;
+      system = `${request.system}\n\nRespond only with JSON matching this JSON Schema:\n${JSON.stringify(request.schema)}`;
     } else break;
     res = await post(format, system, limitField);
   }
@@ -78,11 +78,11 @@ export async function callOpenAICompatible(config: ModelEndpoint, request: Model
   try {
     body = (await res.json()) as ChatResponse;
   } catch {
-    throw new ModelError("invalid_output", "模型服务返回的不是 JSON");
+    throw new ModelError("invalid_output", "The model service did not return JSON");
   }
   const choice = body.choices?.[0];
-  if (choice?.message?.refusal || choice?.finish_reason === "content_filter") throw new ModelError("refused", "模型拒绝处理这次请求");
-  if (choice?.finish_reason === "length") throw new ModelError("truncated", "输出被截断，请在设置中调高输出上限");
+  if (choice?.message?.refusal || choice?.finish_reason === "content_filter") throw new ModelError("refused", "The model refused this request");
+  if (choice?.finish_reason === "length") throw new ModelError("truncated", "The output was cut off; raise the output limit under Settings");
   return {
     text: choice?.message?.content ?? "",
     model: body.model ?? config.model,

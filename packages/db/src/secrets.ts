@@ -12,7 +12,7 @@ function masterKey(dataDir: string): Buffer {
   const fromEnv = process.env.PEW_MASTER_KEY;
   if (fromEnv) {
     const key = Buffer.from(fromEnv, "base64");
-    if (key.length !== 32) throw new AppError("invalid_input", "PEW_MASTER_KEY 必须是 32 字节的 base64");
+    if (key.length !== 32) throw new AppError("invalid_input", "PEW_MASTER_KEY must be 32 bytes, base64-encoded");
     return key;
   }
   const path = join(dataDir, "master.key");
@@ -35,12 +35,12 @@ export function encryptSecret(dataDir: string, plain: string): string {
 
 export function decryptSecret(dataDir: string, stored: string): string {
   const [v, iv, tag, body] = stored.split(".");
-  if (v !== "v1" || !iv || !tag || !body) throw new AppError("invalid_input", "密钥记录格式无法识别，请重新填写模型密钥");
+  if (v !== "v1" || !iv || !tag || !body) throw new AppError("invalid_input", "The stored key has an unknown format. Enter the model key again.");
   try {
     const decipher = createDecipheriv("aes-256-gcm", masterKey(dataDir), Buffer.from(iv, "base64url"));
     decipher.setAuthTag(Buffer.from(tag, "base64url"));
     return Buffer.concat([decipher.update(Buffer.from(body, "base64url")), decipher.final()]).toString("utf8");
   } catch {
-    throw new AppError("invalid_input", "无法解密模型密钥（主密钥不一致，常见于恢复备份后）。请在设置中重新填写。");
+    throw new AppError("invalid_input", "The model key cannot be decrypted (the master key differs, usually after restoring a backup). Enter it again under Settings.");
   }
 }

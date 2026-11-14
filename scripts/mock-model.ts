@@ -17,16 +17,16 @@ interface Message {
 const textOf = (m?: Message) => (typeof m?.content === "string" ? m.content : (m?.content ?? []).map((c) => c.text ?? "").join("\n"));
 
 function abstraction(user: string) {
-  const data = /需求：\n([\s\S]*?)\n\n可引用的原句/.exec(user)?.[1] ?? "[]";
+  const data = /Requests:\n([\s\S]*?)\n\nCitable sentences/.exec(user)?.[1] ?? "[]";
   const requests = JSON.parse(data) as { id: string; party: string; text: string }[];
   const evidence = [...user.matchAll(/\[(E\d+)\] "((?:[^"\\]|\\.)*)"/g)].map((m) => ({ handle: m[1]!, quote: JSON.parse(`"${m[2]}"`) as string }));
   const first = evidence[0];
   return {
     coverage: requests.map((r) => ({
       request: r.id,
-      goal: `【模拟】${r.text.slice(0, 16)}`,
-      shared: "【模拟】共同诉求",
-      specific: `【模拟】${r.party}的特有约束`,
+      goal: `[mock] ${r.text.slice(0, 24)}`,
+      shared: "[mock] shared need",
+      specific: `[mock] constraints specific to ${r.party}`,
       handling: "shared_capability",
       evidence: [],
     })),
@@ -34,8 +34,8 @@ function abstraction(user: string) {
       {
         section: "common_problem",
         kind: "inference",
-        text: `【模拟】${requests.length} 条需求可能指向同一类问题。`,
-        reasoning: "模拟模型的固定输出，不代表真实分析。",
+        text: `[mock] These ${requests.length} requests may point to the same problem.`,
+        reasoning: "Fixed output from the mock model, not a real analysis.",
         missing: "",
         evidence: first ? [{ handle: first.handle, quote: "" }] : [],
         requests: requests.map((r) => r.id),
@@ -43,14 +43,14 @@ function abstraction(user: string) {
       {
         section: "capability",
         kind: "suggestion",
-        text: "【模拟】建议提供统一入口，差异放到配置中，权限类约束保持固定规则。",
-        reasoning: "模拟模型的固定输出。",
+        text: "[mock] Offer one entry point, move the differences into configuration, and keep permission constraints as fixed rules.",
+        reasoning: "Fixed output from the mock model.",
         missing: "",
         evidence: [],
         requests: requests.map((r) => r.id),
       },
-      ...(evidence[1] ? [{ section: "conflict", kind: "source_fact", text: `【模拟】资料写明：${evidence[1].quote}`, reasoning: "", missing: "", evidence: [{ handle: evidence[1].handle, quote: "" }], requests: [] }] : []),
-      { section: "risk", kind: "unknown", text: "【模拟】容量上限无法判断。", reasoning: "", missing: "请找模块负责人确认上限。", evidence: [], requests: [] },
+      ...(evidence[1] ? [{ section: "conflict", kind: "source_fact", text: `[mock] The source states: ${evidence[1].quote}`, reasoning: "", missing: "", evidence: [{ handle: evidence[1].handle, quote: "" }], requests: [] }] : []),
+      { section: "risk", kind: "unknown", text: "[mock] The capacity limit cannot be determined.", reasoning: "", missing: "Ask the module owner to confirm the limit.", evidence: [], requests: [] },
     ],
   };
 }
@@ -63,14 +63,14 @@ function split(user: string) {
       const m = /^([^：:]{1,16})[：:]\s*(.+)$/.exec(line);
       return { party: m?.[1] ?? "", title: (m?.[2] ?? line).slice(0, 12), text: m?.[2] ?? line };
     }),
-    questions: ["【模拟】这个需求的使用频率是多少？"],
+    questions: ["[mock] How often is this needed?"],
   };
 }
 
 function respond(system: string, user: string): unknown {
-  if (system.includes("逐字转写")) return { transcript: "赵财务：【模拟转写】导出时要能带上合同金额\n我：所有角色都要吗？\n赵财务：只给财务和管理层" };
-  if (system.includes("拆成独立的需求")) return split(user);
-  if (system.includes("通用能力")) return abstraction(user);
+  if (system.includes("transcribe a chat screenshot")) return { transcript: "Sam (Finance): [mock transcript] Exports need to include the contract amount\nMe: For every role?\nSam (Finance): Only finance and management" };
+  if (system.includes("split a piece of text")) return split(user);
+  if (system.includes("shared capability")) return abstraction(user);
   return { ok: true };
 }
 

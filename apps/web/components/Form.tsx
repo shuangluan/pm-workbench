@@ -41,7 +41,7 @@ export function Form({
   tone = "primary",
   inline = false,
   confirm,
-  advancedLabel = "更多选项",
+  advancedLabel = "More options",
   advancedOpen = false,
 }: {
   action: Action;
@@ -110,7 +110,7 @@ export function Form({
       const checked = new Set(Array.isArray(v) ? v : v ? [v] : []);
       control = (
         <fieldset className="checks" aria-label={f.label}>
-          {f.options?.length ? null : <p className="muted">（无可选项）</p>}
+          {f.options?.length ? null : <p className="muted">(nothing to choose)</p>}
           {f.options?.map((o) => (
             <label key={o.value} className="check">
               <input type="checkbox" name={f.name} value={o.value} defaultChecked={checked.has(o.value)} />
@@ -166,7 +166,7 @@ export function Form({
       ) : null}
       <div className="form-actions">
         <button type="submit" className={`btn btn-${tone}`} disabled={pending}>
-          {pending ? "处理中…" : submit}
+          {pending ? "Working…" : submit}
         </button>
         <span role="status" aria-live="polite">
           {state.error ? <span className="error">{state.error}</span> : state.ok ? <span className="ok">{state.ok}</span> : null}

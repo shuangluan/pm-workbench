@@ -17,15 +17,15 @@ export function validateEndpoint(raw: string, allowLocalHttp: boolean): URL {
   try {
     url = new URL(raw.trim());
   } catch {
-    throw new ModelError("network", "端点地址格式不正确");
+    throw new ModelError("network", "The endpoint is not a valid URL");
   }
-  if (url.username || url.password) throw new ModelError("network", "端点地址不能包含用户名或密码");
+  if (url.username || url.password) throw new ModelError("network", "The endpoint cannot contain a username or password");
   const host = url.hostname.toLowerCase();
-  if (METADATA_HOSTS.has(host) || isLinkLocal(host)) throw new ModelError("network", "不允许使用云元数据或链路本地地址");
+  if (METADATA_HOSTS.has(host) || isLinkLocal(host)) throw new ModelError("network", "Cloud metadata and link-local addresses are not allowed");
   if (url.protocol === "https:") return url;
-  if (url.protocol !== "http:") throw new ModelError("network", "端点必须是 https:// 地址");
-  if (!allowLocalHttp) throw new ModelError("network", "端点必须使用 HTTPS。本机模型请开启“本地模型模式”");
-  if (!LOOPBACK.has(host)) throw new ModelError("network", "HTTP 端点只允许本机地址");
+  if (url.protocol !== "http:") throw new ModelError("network", "The endpoint must be an https:// URL");
+  if (!allowLocalHttp) throw new ModelError("network", "The endpoint must use HTTPS. For a model on this machine, turn on local model mode.");
+  if (!LOOPBACK.has(host)) throw new ModelError("network", "HTTP endpoints are only allowed on this machine");
   return url;
 }
 

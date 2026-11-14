@@ -29,14 +29,14 @@ export function ScreenshotPicker({ files, onChange }: { files: File[]; onChange:
     const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, "");
     const named = ok.slice(0, room).map((f, i) =>
       // Pasted images all arrive as "image.png"; give them distinguishable names.
-      f.name === "image.png" || !f.name ? new File([f], `截图-${stamp}-${filesRef.current.length + i + 1}.${f.type.split("/")[1]}`, { type: f.type }) : f,
+      f.name === "image.png" || !f.name ? new File([f], `screenshot-${stamp}-${filesRef.current.length + i + 1}.${f.type.split("/")[1]}`, { type: f.type }) : f,
     );
     const notes = [
-      skipped ? `${skipped} 个文件不是 PNG/JPEG/WebP/GIF，已忽略` : "",
-      tooBig.length ? `${tooBig.length} 张超过 10 MB，已忽略` : "",
-      ok.length > room ? `最多 ${MAX_IMAGES} 张，多出的已忽略` : "",
+      skipped ? `Ignored ${skipped === 1 ? "1 file that is" : `${skipped} files that are`} not PNG, JPEG, WebP or GIF` : "",
+      tooBig.length ? `Ignored ${tooBig.length === 1 ? "1 image" : `${tooBig.length} images`} over 10 MB` : "",
+      ok.length > room ? `At most ${MAX_IMAGES} images; the rest were ignored` : "",
     ].filter(Boolean);
-    setMessage(notes.length ? notes.join("；") : null);
+    setMessage(notes.length ? notes.join("; ") : null);
     if (named.length) onChange([...filesRef.current, ...named]);
   };
 
@@ -74,9 +74,9 @@ export function ScreenshotPicker({ files, onChange }: { files: File[]; onChange:
         }}
       >
         <p>
-          <strong>⌘V / Ctrl+V 粘贴截图</strong>，或拖到这里，或
+          <strong>Paste screenshots with ⌘V / Ctrl+V</strong>, drag them here, or
           <label className="linklike file-link">
-            选择图片
+            choose images
             <input
               type="file"
               accept={ACCEPT.join(",")}
@@ -89,19 +89,19 @@ export function ScreenshotPicker({ files, onChange }: { files: File[]; onChange:
             />
           </label>
         </p>
-        <p className="help">聊天截图会原样保存为资料。接入模型后可自动读取截图内容并拆分需求；现在也可以保存后手动转写。</p>
+        <p className="help">Screenshots are saved as sources exactly as they are. With a model configured, they can be read and split into requests automatically; otherwise you can transcribe them by hand after saving.</p>
       </div>
       {message ? <p className="warn">{message}</p> : null}
       {previews.length ? (
-        <ul className="thumbs" aria-label="已添加的截图">
+        <ul className="thumbs" aria-label="Added screenshots">
           {previews.map(({ file, url }, i) => (
             <li key={url}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`截图 ${i + 1}：${file.name}`} />
+              <img src={url} alt={`Screenshot ${i + 1}: ${file.name}`} />
               <span className="thumb-name">{file.name}</span>
               <span className="muted">{fmtSize(file.size)}</span>
               <button type="button" className="linklike danger" onClick={() => onChange(files.filter((f) => f !== file))}>
-                移除
+                Remove
               </button>
             </li>
           ))}

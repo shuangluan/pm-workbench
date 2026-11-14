@@ -12,13 +12,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Link href="/" className="brand">
           PM Evidence Workbench
         </Link>
-        <nav aria-label="主导航">
-          <Link href="/">产品</Link>
-          <Link href="/import">导入</Link>
-          <Link href="/settings">设置与诊断</Link>
+        <nav aria-label="Main">
+          <Link href="/">Products</Link>
+          <Link href="/import">Import</Link>
+          <Link href="/settings">Settings</Link>
           <form action={logoutAction}>
             <button type="submit" className="linklike">
-              退出
+              Sign out
             </button>
           </form>
         </nav>

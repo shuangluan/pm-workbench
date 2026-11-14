@@ -74,11 +74,11 @@ export interface OpenItem {
   text: string;
 }
 
-export function openItems(snapshot: ReportSnapshot, lang: Lang = "zh"): OpenItem[] {
+export function openItems(snapshot: ReportSnapshot, lang: Lang = "en"): OpenItem[] {
   const items: OpenItem[] = [];
   for (const c of snapshot.claims) {
     if (c.review === "rejected") continue;
-    if (c.kind === "unknown") items.push({ kind: "unknown", text: c.missing ? `${c.text}（${c.missing}）` : c.text });
+    if (c.kind === "unknown") items.push({ kind: "unknown", text: c.missing ? `${c.text}${L[lang].p.open}${c.missing}${L[lang].p.close}` : c.text });
     if (c.evidenceValidity !== "valid") items.push({ kind: "stale_evidence", text: c.text });
   }
   for (const q of snapshot.openQuestions) items.push({ kind: "question", text: q });
@@ -109,13 +109,13 @@ export interface NextStep {
  * a decision, unknowns need material or a person, confirmed dependencies need
  * verification, suggestions need review. Rejected claims are left out.
  */
-export function nextSteps(snapshot: ReportSnapshot, lang: Lang = "zh"): NextStep[] {
+export function nextSteps(snapshot: ReportSnapshot, lang: Lang = "en"): NextStep[] {
   const steps: NextStep[] = [];
   const live = snapshot.claims.filter((c) => c.review !== "rejected");
   const refs = (c: ClaimRecord) => c.evidence.map((e) => e.handle);
   for (const c of live.filter((c) => c.section === "conflict")) steps.push({ kind: "decide", text: c.text, refs: refs(c) });
   for (const q of snapshot.openQuestions) steps.push({ kind: "decide", text: q, refs: [] });
-  for (const c of live.filter((c) => c.kind === "unknown")) steps.push({ kind: "supply", text: c.missing ? `${c.missing}（${c.text}）` : c.text, refs: refs(c) });
+  for (const c of live.filter((c) => c.kind === "unknown")) steps.push({ kind: "supply", text: c.missing ? `${c.missing}${L[lang].p.open}${c.text}${L[lang].p.close}` : c.text, refs: refs(c) });
   for (const c of live.filter((c) => c.evidenceValidity !== "valid")) {
     steps.push({ kind: "supply", text: `${L[lang].recheck}${c.text}`, refs: refs(c) });
   }
@@ -132,6 +132,7 @@ export function nextSteps(snapshot: ReportSnapshot, lang: Lang = "zh"): NextStep
 
 const L = {
   zh: {
+    p: { colon: "：", list: "、", open: "（", close: "）", lq: "“", rq: "”", semi: "；", comma: "，" },
     status: { draft: "草稿：仍有待核对条目", reviewed_open: "已核对（有未决项）", reviewed_clear: "已核对（无已知未决项）" },
     reviewedNote: "“已核对”仅表示用户检查过所有条目，不保证正确或完整。",
     kind: { source_fact: "原文事实", confirmed_relation: "已确认关系", inference: "推断", suggestion: "建议", unknown: "未知" },
@@ -192,6 +193,7 @@ const L = {
     empty: "（无已核对内容）",
   },
   en: {
+    p: { colon: ": ", list: ", ", open: " (", close: ")", lq: "\"", rq: "\"", semi: "; ", comma: ", " },
     status: { draft: "Draft: claims still pending review", reviewed_open: "Reviewed (open items remain)", reviewed_clear: "Reviewed (no known open items)" },
     reviewedNote: "\"Reviewed\" only means every claim was checked by the user; it does not guarantee correctness or completeness.",
     kind: { source_fact: "Source fact", confirmed_relation: "Confirmed relation", inference: "Inference", suggestion: "Suggestion", unknown: "Unknown" },
@@ -279,8 +281,8 @@ function claimLine(c: ClaimRecord, lang: Lang): string {
   if (c.evidenceValidity === "source_deleted") tags.push(t.sourceDeleted);
   let line = `- **[${tags.join(" · ")}]** ${escapeInline(c.text)}`;
   if (c.evidence.length) line += ` — ${t.based} ${c.evidence.map((e) => `[${e.handle}]`).join(" ")}`;
-  if (c.reasoning) line += `\n  - ${t.reasoning}：${escapeInline(c.reasoning)}`;
-  if (c.missing) line += `\n  - ${t.missing}：${escapeInline(c.missing)}`;
+  if (c.reasoning) line += `\n  - ${t.reasoning}${t.p.colon}${escapeInline(c.reasoning)}`;
+  if (c.missing) line += `\n  - ${t.missing}${t.p.colon}${escapeInline(c.missing)}`;
   return line;
 }
 
@@ -298,7 +300,7 @@ function impactLines(snapshot: ReportSnapshot, lang: Lang): string[] {
   const name = (id: string) => escapeInline(nodes.get(id)?.name ?? id);
   const { result } = impact;
 
-  out.push(`${t.changed}：${result.changedNodeIds.map(name).join("、")}`, "");
+  out.push(`${t.changed}${t.p.colon}${result.changedNodeIds.map(name).join(t.p.list)}`, "");
   if (!result.hits.length) out.push(t.noHits);
   for (const hit of result.hits) {
     const route = hit.paths
@@ -307,17 +309,17 @@ function impactLines(snapshot: ReportSnapshot, lang: Lang): string[] {
         return e ? `${name(e.from)} -${e.type}→ ${name(e.to)}` : id;
       }).join(" ; "))
       .join(" | ");
-    out.push(`- **${name(hit.nodeId)}**（${hit.relation === "direct" ? t.direct : t.indirect}，${hit.depth}）：${route}`);
-    out.push(`  - ${t.verify}：${escapeInline(verificationQuestion(hit, nodes, edges, lang))}`);
+    out.push(`- **${name(hit.nodeId)}**${t.p.open}${hit.relation === "direct" ? t.direct : t.indirect}${t.p.comma}${hit.depth}${t.p.close}${t.p.colon}${route}`);
+    out.push(`  - ${t.verify}${t.p.colon}${escapeInline(verificationQuestion(hit, nodes, edges, lang))}`);
   }
   const { beyondDepthNodeIds, overNodeLimitNodeIds } = result.truncation;
-  if (beyondDepthNodeIds.length) out.push(`- ${t.beyond}：${beyondDepthNodeIds.map(name).join("、")}`);
-  if (overNodeLimitNodeIds.length) out.push(`- ${t.overLimit}：${overNodeLimitNodeIds.map(name).join("、")}`);
+  if (beyondDepthNodeIds.length) out.push(`- ${t.beyond}${t.p.colon}${beyondDepthNodeIds.map(name).join(t.p.list)}`);
+  if (overNodeLimitNodeIds.length) out.push(`- ${t.overLimit}${t.p.colon}${overNodeLimitNodeIds.map(name).join(t.p.list)}`);
   if (result.skippedEdges.length) {
-    out.push(`- ${t.skipped}：`);
+    out.push(`- ${t.skipped}${t.p.colon.trim()}`);
     for (const s of result.skippedEdges) {
       const e = edges.get(s.edgeId);
-      out.push(`  - ${e ? `${name(e.from)} -${e.type}→ ${name(e.to)}` : s.edgeId}（${s.reason}）`);
+      out.push(`  - ${e ? `${name(e.from)} -${e.type}→ ${name(e.to)}` : s.edgeId}${t.p.open}${s.reason}${t.p.close}`);
     }
   }
   return out;
@@ -327,24 +329,24 @@ function evidenceIndex(snapshot: ReportSnapshot, lang: Lang): string[] {
   const t = L[lang];
   return snapshot.evidence.map((e) => {
     const where = `${escapeInline(e.sourceName)} v${e.sourceVersion} L${e.lineStart}${e.lineEnd !== e.lineStart ? `–${e.lineEnd}` : ""}`;
-    const flag = e.validity === "valid" ? "" : `（${e.validity === "source_deleted" ? t.sourceDeleted : t.stale}）`;
-    return `- [${e.handle}] ${where}${flag}：${e.quote === null ? t.deleted : `“${escapeInline(e.quote)}”`}`;
+    const flag = e.validity === "valid" ? "" : `${t.p.open}${e.validity === "source_deleted" ? t.sourceDeleted : t.stale}${t.p.close}`;
+    return `- [${e.handle}] ${where}${flag}${t.p.colon}${e.quote === null ? t.deleted : `${t.p.lq}${escapeInline(e.quote)}${t.p.rq}`}`;
   });
 }
 
-export function renderReportMarkdown(snapshot: ReportSnapshot, lang: Lang = "zh"): string {
+export function renderReportMarkdown(snapshot: ReportSnapshot, lang: Lang = "en"): string {
   const t = L[lang];
   const status = reportStatus(snapshot);
   const open = openItems(snapshot, lang);
-  const out: string[] = [`# ${escapeInline(snapshot.title)}`, "", `> **${t.status[status]}**。${t.reviewedNote}`, ""];
+  const out: string[] = [`# ${escapeInline(snapshot.title)}`, "", `> **${t.status[status]}**${lang === "zh" ? "。" : ". "}${t.reviewedNote}`, ""];
 
   out.push(`## ${t.goal}`, "", escapeInline(snapshot.goal), "");
-  if (snapshot.changeDescription) out.push(`**${t.change}**：${escapeInline(snapshot.changeDescription)}`, "");
+  if (snapshot.changeDescription) out.push(`**${t.change}**${t.p.colon}${escapeInline(snapshot.changeDescription)}`, "");
 
   out.push(`## ${t.scope}`, "", `### ${t.requests}`, "");
   for (const r of snapshot.requests) out.push(`**${r.handle} · ${escapeInline(r.party)} · ${escapeInline(r.title)}**`, "", quoteBlock(r.originalText), "");
   out.push(`### ${t.sources}`, "");
-  for (const s of snapshot.sources) out.push(`- ${escapeInline(s.name)} v${s.version}${s.validity === "valid" ? "" : `（${s.validity === "source_deleted" ? t.sourceDeleted : t.stale}）`}`);
+  for (const s of snapshot.sources) out.push(`- ${escapeInline(s.name)} v${s.version}${s.validity === "valid" ? "" : `${t.p.open}${s.validity === "source_deleted" ? t.sourceDeleted : t.stale}${t.p.close}`}`);
   out.push("");
 
   if (snapshot.coverage.length) {
@@ -385,7 +387,7 @@ export function renderReportMarkdown(snapshot: ReportSnapshot, lang: Lang = "zh"
 
   out.push(`## ${t.decisions}`, "");
   if (snapshot.decisions.length) {
-    for (const d of snapshot.decisions) out.push(`- ${escapeInline(d.text)}（${t.reason}：${escapeInline(d.reason)}；${d.decidedAt}）`);
+    for (const d of snapshot.decisions) out.push(`- ${escapeInline(d.text)}${t.p.open}${t.reason}${t.p.colon}${escapeInline(d.reason)}${t.p.semi}${d.decidedAt}${t.p.close}`);
   } else out.push(t.none);
   out.push("");
 
@@ -408,7 +410,7 @@ export function renderReportMarkdown(snapshot: ReportSnapshot, lang: Lang = "zh"
  * Spec summary assembled from reviewed claims only (F08). Gaps stay visible
  * rather than being filled, and open items are never dropped.
  */
-export function renderSpecMarkdown(snapshot: ReportSnapshot, lang: Lang = "zh"): string {
+export function renderSpecMarkdown(snapshot: ReportSnapshot, lang: Lang = "en"): string {
   const t = L[lang];
   const reviewed = (sections: ClaimSection[], kinds?: ClaimKind[]) =>
     snapshot.claims.filter(
@@ -425,7 +427,7 @@ export function renderSpecMarkdown(snapshot: ReportSnapshot, lang: Lang = "zh"):
     ...block(goal, [escapeInline(snapshot.goal)]),
     ...block(scope, [
       ...reviewed(["capability", "configuration"]).map((c) => claimLine(c, lang)),
-      ...snapshot.coverage.filter((r) => r.handling === "separate" || r.handling === "not_covered").map((r) => `- ${r.requestHandle}：${t.handling[r.handling]}`),
+      ...snapshot.coverage.filter((r) => r.handling === "separate" || r.handling === "not_covered").map((r) => `- ${r.requestHandle}${t.p.colon}${t.handling[r.handling]}`),
     ]),
     ...block(rules, reviewed(["spec", "conflict", "common_problem"], ["source_fact", "confirmed_relation"]).map((c) => claimLine(c, lang))),
     ...block(impact, [...impactLines(snapshot, lang), ...reviewed(["impact_confirmed", "impact_possible"]).map((c) => claimLine(c, lang))]),

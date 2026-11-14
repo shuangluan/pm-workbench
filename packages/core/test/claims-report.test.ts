@@ -112,19 +112,21 @@ describe("report", () => {
 
   it("renders the §10.3 expectations into Markdown", () => {
     const md = renderReportMarkdown(exampleSnapshot());
-    expect(md).toContain("已核对（有未决项）");
-    expect(md).toContain("**导出模块**（直接依赖，1）");
-    expect(md).toContain("**报表模块**（间接依赖，2）");
-    expect(md).toContain("手机号属于受限字段。");
-    expect(md).toContain("权限规则说明 v1 L5");
-    expect(md).toContain("销售提出者是否为团队负责人？");
-    expect(md).not.toMatch(/10万行|必须异步/);
+    expect(md).toContain("Reviewed (open items remain)");
+    expect(md).toContain("**Export module** (Direct dependency, 1)");
+    expect(md).toContain("**Reporting module** (Indirect dependency, 2)");
+    expect(md).toContain("Phone number is a restricted field.");
+    expect(md).toContain("Permission rules v1 L5");
+    expect(md).toContain("Is the sales requester a team lead?");
+    expect(md).not.toMatch(/100,000 rows|must be asynchronous/);
+    // English output uses English punctuation throughout.
+    expect(md).not.toMatch(/[：（）、“”；，。]/);
   });
 
   it("does not list the permission service as downstream when the export module changes", () => {
     const md = renderReportMarkdown(exampleSnapshot(["n_export"]));
-    expect(md).toContain("**报表模块**（直接依赖，1）");
-    expect(md).not.toContain("**权限服务**（");
+    expect(md).toContain("**Reporting module** (Direct dependency, 1)");
+    expect(md).not.toContain("**Permission service** (");
   });
 
   it("escapes markup that arrives in source text", () => {
@@ -141,9 +143,9 @@ describe("report", () => {
     snap.evidence = snap.evidence.map((e) => (e.handle === phone ? { ...e, quote: null, validity: "source_deleted" } : e));
     snap.claims = snap.claims.map((c): ClaimRecord => (c.evidence.some((e) => e.handle === phone) ? { ...c, evidenceValidity: "source_deleted" } : c));
     const md = renderReportMarkdown(snap);
-    expect(md).not.toContain("“手机号属于受限字段。”");
-    expect(md).toContain("［来源已删除，原句不再保留］");
-    expect(md).toMatch(/\*\*\[原文事实 · 来源已删除\]\*\* 客服导出/);
+    expect(md).not.toContain('"Phone number is a restricted field."');
+    expect(md).toContain("[source deleted; quote no longer kept]");
+    expect(md).toMatch(/\*\*\[Source fact · source deleted\]\*\* Support exports/);
   });
 
   it("spec summary only uses reviewed claims and keeps open items", () => {
@@ -151,9 +153,9 @@ describe("report", () => {
     snap.claims = snap.claims.map((c, i) => (i === 1 ? { ...c, review: "pending" } : c));
     const md = renderSpecMarkdown(snap, "en");
     expect(md).toContain("Draft: claims still pending review");
-    expect(md).not.toContain("统一的导出入口");
-    expect(md).toContain("销售提出者是否为团队负责人？");
-    expect(md).toMatch(/## Acceptance suggestions\n\n- \*\*\[Suggestion\]\*\* 回归验证/);
+    expect(md).not.toContain("one export entry point");
+    expect(md).toContain("Is the sales requester a team lead?");
+    expect(md).toMatch(/## Acceptance suggestions\n\n- \*\*\[Suggestion\]\*\* Regression checks/);
   });
 });
 
@@ -189,28 +191,35 @@ describe("next steps", () => {
     snap.claims = snap.claims.map((c, i) => (i === 3 ? { ...c, review: "rejected", rejectReason: "irrelevant" } : c));
     const steps = nextSteps(snap);
     // Only the rejected conflict disappears; the config suggestion still mentions phone numbers.
-    expect(steps.some((s) => s.kind === "decide" && s.text.includes("手机号"))).toBe(false);
+    expect(steps.some((s) => s.kind === "decide" && s.text.includes("phone numbers"))).toBe(false);
     expect(steps.filter((s) => s.kind === "decide").map((s) => s.text)).toEqual([
-      expect.stringContaining("销售要求导出整个团队的客户"),
-      "销售提出者是否为团队负责人？",
+      expect.stringContaining("Sales wants to export the whole team's customers"),
+      "Is the sales requester a team lead?",
     ]);
-    expect(steps.find((s) => s.kind === "supply")!.text).toContain("需要导出模块负责人提供");
+    expect(steps.find((s) => s.kind === "supply")!.text).toContain("Ask the export module owner");
     expect(steps.filter((s) => s.kind === "verify").map((s) => s.text)).toEqual([
-      expect.stringMatching(/^导出模块调用权限服务/),
-      expect.stringMatching(/^报表模块经由导出模块间接依赖权限服务/),
-      expect.stringMatching(/^回归验证/),
+      expect.stringMatching(/^Export module calls Permission service/),
+      expect.stringMatching(/^Reporting module indirectly depends on Permission service via Export module/),
+      expect.stringMatching(/^Regression checks/),
     ]);
     expect(steps.filter((s) => s.kind === "review").map((s) => s.text)).toEqual([
-      expect.stringContaining("统一的导出入口"),
-      expect.stringContaining("按业务方配置导出范围"),
+      expect.stringContaining("one export entry point"),
+      expect.stringContaining("Configure export scope per party"),
     ]);
   });
 
   it("renders the section with refs and an explicit note that it is not a conclusion", () => {
     const md = renderReportMarkdown(exampleSnapshot());
+    expect(md).toContain("## Suggested next steps");
+    expect(md).toContain("### Decisions needed");
+    expect(md).toContain("An action list, not conclusions");
+    expect(md).toMatch(/1\. Sales wants to export the whole team's customers.* — \[E\d\] \[E\d\]/);
+  });
+
+  it("can still render Chinese headings with Chinese punctuation", () => {
+    const md = renderReportMarkdown(exampleSnapshot(), "zh");
+    expect(md).toContain("已核对（有未决项）");
+    expect(md).toContain("**Export module**（直接依赖，1）");
     expect(md).toContain("## 建议的下一步");
-    expect(md).toContain("### 需要决策");
-    expect(md).toContain("是行动清单而不是结论");
-    expect(md).toMatch(/1\. 销售要求导出整个团队的客户.* — \[E\d\] \[E\d\]/);
   });
 });

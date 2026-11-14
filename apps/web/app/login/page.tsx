@@ -15,40 +15,40 @@ export default async function LoginPage() {
   return (
     <main className="auth">
       <h1>PM Evidence Workbench</h1>
-      <p className="muted">本地单人版 · 只在本机访问</p>
+      <p className="muted">Local, single user · reachable only from this machine</p>
       {status.setupPending ? (
         <section className="card">
-          <h2>{status.initialized ? "重置访问口令" : "初始化实例"}</h2>
-          <p>输入终端显示的一次性初始化码，并设置访问口令。完成后初始化码失效，所有旧会话退出。</p>
+          <h2>{status.initialized ? "Reset passphrase" : "Set up this instance"}</h2>
+          <p>Enter the one-time setup code shown in your terminal and choose a passphrase. The code then stops working and all earlier sessions are signed out.</p>
           <p className="help">
-            找不到初始化码？运行 <code>{accessResetCommand()}</code> 重新生成，然后回到本页。
+            Cannot find the code? Run <code>{accessResetCommand()}</code> to get a new one, then come back here.
           </p>
           <Form
             action={setupAction}
-            submit="完成设置"
+            submit="Finish setup"
             fields={[
-              { name: "code", label: "初始化码", type: "text", required: true, autoComplete: "one-time-code", placeholder: "XXXX-XXXX-XXXX-XXXX" },
-              { name: "passphrase", label: "访问口令（至少 10 个字符）", type: "password", required: true, autoComplete: "new-password" },
-              { name: "passphrase2", label: "再次输入访问口令", type: "password", required: true, autoComplete: "new-password" },
+              { name: "code", label: "Setup code", type: "text", required: true, autoComplete: "one-time-code", placeholder: "XXXX-XXXX-XXXX-XXXX" },
+              { name: "passphrase", label: "Passphrase (at least 10 characters)", type: "password", required: true, autoComplete: "new-password" },
+              { name: "passphrase2", label: "Repeat passphrase", type: "password", required: true, autoComplete: "new-password" },
             ]}
           />
         </section>
       ) : status.initialized ? (
         <section className="card">
-          <h2>登录</h2>
+          <h2>Sign in</h2>
           <Form
             action={loginAction}
-            submit="登录"
-            fields={[{ name: "passphrase", label: "访问口令", type: "password", required: true, autoComplete: "current-password" }]}
+            submit="Sign in"
+            fields={[{ name: "passphrase", label: "Passphrase", type: "password", required: true, autoComplete: "current-password" }]}
           />
-          <p className="help">忘记口令：在项目目录运行 <code>{accessResetCommand()}</code>，再刷新本页。</p>
+          <p className="help">Forgot it? Run <code>{accessResetCommand()}</code> in the project directory, then refresh this page.</p>
         </section>
       ) : (
         <section className="card">
-          <h2>尚未初始化</h2>
-          <p>在项目目录打开一个终端，运行下面的命令获取一次性初始化码，然后刷新本页：</p>
+          <h2>Not set up yet</h2>
+          <p>Open a terminal in the project directory and run this command to get a one-time setup code, then refresh this page:</p>
           <pre>{accessResetCommand()}</pre>
-          <p className="help">初始化码只显示在终端，不写入日志，30 分钟内有效。</p>
+          <p className="help">The code is shown only in your terminal, never logged, and is valid for 30 minutes.</p>
         </section>
       )}
     </main>

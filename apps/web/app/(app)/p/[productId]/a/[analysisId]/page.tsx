@@ -37,13 +37,13 @@ import { Form } from "@/components/Form";
 import { getDb } from "@/lib/db";
 import { found } from "@/lib/found";
 import { FAILURE_HINT, RUN_STATUS, TASK_LABEL } from "@/lib/runs-ui";
-import { ANALYSIS_STATUS, NODE_TYPE, fmtDate, KIND, KIND_HELP, REJECT, REPORT_STATUS, REVIEW, SECTION, VALIDITY } from "@/lib/labels";
+import { ANALYSIS_STATUS, NODE_TYPE, plural, fmtDate, KIND, KIND_HELP, REJECT, REPORT_STATUS, REVIEW, SECTION, VALIDITY } from "@/lib/labels";
 
 const STEPS = [
-  { id: "scope", label: "1 · 需求与资料" },
-  { id: "claims", label: "2 · 条目核对" },
-  { id: "report", label: "3 · 报告" },
-  { id: "settings", label: "设置" },
+  { id: "scope", label: "1 · Requests and sources" },
+  { id: "claims", label: "2 · Review claims" },
+  { id: "report", label: "3 · Report" },
+  { id: "settings", label: "Settings" },
 ] as const;
 type Step = (typeof STEPS)[number]["id"];
 
@@ -56,23 +56,23 @@ function ClaimCard({ claim, evidence, productId }: { claim: ClaimView; evidence:
     { name: "revision", type: "hidden" as const, defaultValue: String(claim.revision) },
   ];
   return (
-    <article className={`claim claim-${claim.review}`} aria-label={`${KIND[claim.kind]}：${claim.text.slice(0, 40)}`}>
+    <article className={`claim claim-${claim.review}`} aria-label={`${KIND[claim.kind]}: ${claim.text.slice(0, 40)}`}>
       <header className="claim-tags">
         <span className={`tag kind-${claim.kind}`}>{KIND[claim.kind]}</span>
-        <span className="tag">{claim.origin === "user" ? "用户输入" : "AI 生成"}</span>
+        <span className="tag">{claim.origin === "user" ? "User input" : "AI generated"}</span>
         <span className={`tag review-${claim.review}`}>{REVIEW[claim.review]}</span>
         {claim.evidenceValidity !== "valid" ? <span className="tag tag-warn">{VALIDITY[claim.evidenceValidity]}</span> : null}
-        {claim.rejectReason ? <span className="tag">原因：{REJECT[claim.rejectReason]}</span> : null}
+        {claim.rejectReason ? <span className="tag">Reason: {REJECT[claim.rejectReason]}</span> : null}
       </header>
       <p className="claim-text">{claim.text}</p>
-      {claim.reasoning ? <p className="claim-meta">推导：{claim.reasoning}</p> : null}
-      {claim.missing ? <p className="claim-meta">需补充：{claim.missing}</p> : null}
+      {claim.reasoning ? <p className="claim-meta">Reasoning: {claim.reasoning}</p> : null}
+      {claim.missing ? <p className="claim-meta">Needed: {claim.missing}</p> : null}
       {claim.original ? (
         <p className="claim-meta">
-          原 AI 内容（{KIND[claim.original.kind]}）：<s>{claim.original.text}</s>
+          Original AI text ({KIND[claim.original.kind]}): <s>{claim.original.text}</s>
         </p>
       ) : null}
-      {claim.rejectNote ? <p className="claim-meta">说明：{claim.rejectNote}</p> : null}
+      {claim.rejectNote ? <p className="claim-meta">Note: {claim.rejectNote}</p> : null}
       {claim.evidenceIds.length ? (
         <ul className="citations">
           {claim.evidenceIds.map((id) => {
@@ -84,41 +84,41 @@ function ClaimCard({ claim, evidence, productId }: { claim: ClaimView; evidence:
                   {e.sourceName} v{e.version} L{e.lineStart}
                 </Link>
                 {e.validity !== "valid" ? <span className="tag tag-warn">{VALIDITY[e.validity]}</span> : null}
-                <span className="quote">{e.quote ?? "［来源已删除，原句不再保留］"}</span>
+                <span className="quote">{e.quote ?? "[source deleted; quote no longer kept]"}</span>
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="claim-meta muted">无引用</p>
+        <p className="claim-meta muted">No citations</p>
       )}
       <div className="claim-actions">
         {claim.review !== "accepted" ? (
-          <Form action={reviewAction} submit="接受" tone="secondary" inline fields={[...hidden, { name: "type", type: "hidden", defaultValue: "accept" }]} />
+          <Form action={reviewAction} submit="Accept" tone="secondary" inline fields={[...hidden, { name: "type", type: "hidden", defaultValue: "accept" }]} />
         ) : null}
         {claim.review !== "pending" ? (
-          <Form action={reviewAction} submit="改回待核对" tone="secondary" inline fields={[...hidden, { name: "type", type: "hidden", defaultValue: "reopen" }]} />
+          <Form action={reviewAction} submit="Back to pending" tone="secondary" inline fields={[...hidden, { name: "type", type: "hidden", defaultValue: "reopen" }]} />
         ) : null}
         <details className="disclosure inline-disclosure">
-          <summary>修正</summary>
+          <summary>Correct</summary>
           <Form
             action={reviewAction}
-            submit="保存修正"
-            fields={[...hidden, { name: "type", type: "hidden", defaultValue: "correct" }, { name: "text", label: "修正后的内容", type: "textarea", rows: 3, required: true, defaultValue: claim.text }]}
+            submit="Save correction"
+            fields={[...hidden, { name: "type", type: "hidden", defaultValue: "correct" }, { name: "text", label: "Corrected text", type: "textarea", rows: 3, required: true, defaultValue: claim.text }]}
           />
         </details>
         {claim.review !== "rejected" ? (
           <details className="disclosure inline-disclosure">
-            <summary>不采纳</summary>
+            <summary>Reject</summary>
             <Form
               action={reviewAction}
-              submit="标记不采纳"
+              submit="Mark rejected"
               tone="danger"
               fields={[
                 ...hidden,
                 { name: "type", type: "hidden", defaultValue: "reject" },
-                { name: "reason", label: "原因", type: "select", options: Object.entries(REJECT).map(([value, label]) => ({ value, label })) },
-                { name: "note", label: "说明（选“其他”时必填）", type: "text" },
+                { name: "reason", label: "Reason", type: "select", options: Object.entries(REJECT).map(([value, label]) => ({ value, label })) },
+                { name: "note", label: "Note (required for Other)", type: "text" },
               ]}
             />
           </details>
@@ -149,41 +149,41 @@ export default async function AnalysisPage({
 
   const next =
     !analysis.requestIds.length && !analysis.selectedSources.length
-      ? { step: "scope", text: "选择本次分析的需求与资料" }
+      ? { step: "scope", text: "Choose the requests and sources for this analysis" }
       : pending
-        ? { step: "claims", text: `核对 ${pending} 条待核对条目` }
+        ? { step: "claims", text: `Review ${plural(pending, "pending claim")}` }
         : claims.length
-          ? { step: "report", text: "保存报告版本并导出" }
-          : { step: "claims", text: "添加分析条目" };
+          ? { step: "report", text: "Save a report version and export it" }
+          : { step: "claims", text: "Add claims" };
 
   return (
     <>
-      <nav className="crumbs" aria-label="位置">
-        <Link href="/">产品</Link> / <Link href={`/p/${productId}`}>{product.name}</Link> / <span>{analysis.title}</span>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <Link href="/">Products</Link> / <Link href={`/p/${productId}`}>{product.name}</Link> / <span>{analysis.title}</span>
       </nav>
       <h1>{analysis.title}</h1>
       <div className="statusbar" role="status">
         <span className={`tag tag-${analysis.status}`}>{ANALYSIS_STATUS[analysis.status]}</span>
         <span>
-          {analysis.requestIds.length} 条需求 · {analysis.selectedSources.length} 份资料 · {claims.length} 条条目
+          {plural(analysis.requestIds.length, "request")} · {plural(analysis.selectedSources.length, "source")} · {plural(claims.length, "claim")}
         </span>
-        <span className={pending ? "warn" : undefined}>待核对 {pending}</span>
+        <span className={pending ? "warn" : undefined}>{pending} pending</span>
         {!archived ? (
           <span>
-            下一步：<Link href={`${base}?step=${next.step}`}>{next.text}</Link>
+            Next: <Link href={`${base}?step=${next.step}`}>{next.text}</Link>
           </span>
         ) : null}
       </div>
-      {analysis.goal ? <p>目标：{analysis.goal}</p> : null}
-      {analysis.changeDescription ? <p className="muted">改动描述：{analysis.changeDescription}</p> : null}
-      {archived ? <p className="banner banner-warn">该分析已归档，只读。可在“设置”中取消归档。</p> : null}
+      {analysis.goal ? <p>Goal: {analysis.goal}</p> : null}
+      {analysis.changeDescription ? <p className="muted">Change: {analysis.changeDescription}</p> : null}
+      {archived ? <p className="banner banner-warn">This analysis is archived and read-only. Unarchive it under Settings.</p> : null}
       {created ? (
         <p className="banner banner-info">
-          已创建：{analysis.requestIds.length} 条需求、{analysis.selectedSources.length} 份资料/截图，都已加入本次分析。下一步：让模型生成分析，或打开资料划选依据手工添加条目。
+          Created {plural(analysis.requestIds.length, "request")} and {plural(analysis.selectedSources.length, "source")}, all included in this analysis. Next: let the model draft the analysis, or open a source and select text to add claims by hand.
         </p>
       ) : null}
 
-      <nav className="tabs" aria-label="分析步骤">
+      <nav className="tabs" aria-label="Analysis steps">
         {STEPS.map((s) => (
           <Link key={s.id} href={`${base}?step=${s.id}`} aria-current={s.id === step ? "page" : undefined}>
             {s.label}
@@ -198,37 +198,37 @@ export default async function AnalysisPage({
         <section className="section">
           <div className="grid-2">
             <section className="card">
-              <h2>基本信息</h2>
+              <h2>Details</h2>
               <Form
                 action={updateAnalysisAction}
-                submit="保存"
+                submit="Save"
                 fields={[
                   { name: "productId", type: "hidden", defaultValue: productId },
                   { name: "analysisId", type: "hidden", defaultValue: analysisId },
                   { name: "revision", type: "hidden", defaultValue: String(analysis.revision) },
-                  { name: "title", label: "标题", type: "text", required: true, defaultValue: analysis.title },
-                  { name: "goal", label: "本次目标", type: "textarea", rows: 2, defaultValue: analysis.goal },
-                  { name: "changeDescription", label: "改动描述", type: "textarea", rows: 2, defaultValue: analysis.changeDescription },
+                  { name: "title", label: "Title", type: "text", required: true, defaultValue: analysis.title },
+                  { name: "goal", label: "Goal", type: "textarea", rows: 2, defaultValue: analysis.goal },
+                  { name: "changeDescription", label: "Change description", type: "textarea", rows: 2, defaultValue: analysis.changeDescription },
                 ]}
               />
             </section>
             <section className="card">
-              <h2>影响检查起点</h2>
+              <h2>Impact check starting points</h2>
               {memory?.nodes.length ? (
                 <>
                   <p className="help">
-                    选择这次改动直接涉及的模块或数据对象。报告会沿已确认的关系找出依赖它们的对象，并列出需要验证的问题。未确认的关系不参与。
+                    Choose the modules or data objects this change touches directly. The report follows confirmed relations to find what depends on them and lists questions to verify. Unconfirmed relations are not used.
                   </p>
                   <Form
                     action={setChangeNodesAction}
-                    submit="保存起点"
+                    submit="Save starting points"
                     tone="secondary"
                     fields={[
                       { name: "productId", type: "hidden", defaultValue: productId },
                       { name: "analysisId", type: "hidden", defaultValue: analysisId },
                       {
                         name: "nodeIds",
-                        label: "变更对象",
+                        label: "Changed objects",
                         type: "checkboxes",
                         defaultValue: analysis.changeNodeIds,
                         options: memory.nodes.map((n) => ({ value: n.id, label: n.name, hint: NODE_TYPE[n.type] })),
@@ -237,15 +237,15 @@ export default async function AnalysisPage({
                   />
                 </>
               ) : (
-                <p className="help">这个产品还没有已确认的模块与关系。局部记忆页面将在后续版本提供；示例产品中可以先体验。</p>
+                <p className="help">This product has no confirmed modules or relations yet. Pages for building that memory come in a later version; you can try the impact check in the example product.</p>
               )}
             </section>
             <section className="card">
-              <h2>归档与删除</h2>
-              <p className="help">归档保留全部内容，只是变为只读。删除会移除这次分析的条目和报告版本，保留产品中的需求与资料。</p>
+              <h2>Archive or delete</h2>
+              <p className="help">Archiving keeps everything and makes it read-only. Deleting removes this analysis's claims and report versions; the product's requests and sources are kept.</p>
               <Form
                 action={archiveAnalysisAction}
-                submit={archived ? "取消归档" : "归档"}
+                submit={archived ? "Unarchive" : "Archive"}
                 tone="secondary"
                 fields={[
                   { name: "productId", type: "hidden", defaultValue: productId },
@@ -254,15 +254,15 @@ export default async function AnalysisPage({
                 ]}
               />
               <details className="disclosure danger-zone">
-                <summary>永久删除分析</summary>
+                <summary>Delete analysis permanently</summary>
                 <Form
                   action={deleteAnalysisAction}
-                  submit="永久删除"
+                  submit="Delete permanently"
                   tone="danger"
                   fields={[
                     { name: "productId", type: "hidden", defaultValue: productId },
                     { name: "analysisId", type: "hidden", defaultValue: analysisId },
-                    { name: "confirm", label: "输入“删除”以确认", type: "text", required: true },
+                    { name: "confirm", label: "Type DELETE to confirm", type: "text", required: true },
                   ]}
                 />
               </details>
@@ -284,29 +284,29 @@ async function ScopeStep({ productId, analysis }: { productId: string; analysis:
   const totalChars = analysis.selectedSources.reduce((n, s) => n + s.charCount, 0);
   const base = `/p/${productId}`;
   const q = `analysis=${analysis.id}`;
-  const kindLabel = (k: string) => (k === "image" ? "截图" : k === "transcript" ? "转写" : "");
+  const kindLabel = (k: string) => (k === "image" ? "Screenshot" : k === "transcript" ? "Transcript" : "");
 
   return (
     <section className="section">
       <div className="grid-2">
         <section className="card">
-          <h2>添加需求</h2>
-          <p className="help">粘贴聊天记录、表格或列表，预览确认后自动加入本次分析。</p>
+          <h2>Add requests</h2>
+          <p className="help">Paste a chat log, table or list. After you confirm the preview, the requests join this analysis.</p>
           <p>
             <Link className="btn btn-primary" href={`${base}/requests/new?${q}`}>
-              批量录入需求
+              Add requests in bulk
             </Link>
           </p>
         </section>
         <section className="card">
-          <h2>添加聊天截图</h2>
+          <h2>Add chat screenshots</h2>
           <ScreenshotUploadForm action={uploadImagesAction} productId={productId} analysisId={analysis.id} />
         </section>
       </div>
 
       {analysis.selectedSources.length ? (
         <>
-          <h2>本次资料</h2>
+          <h2>Sources in this analysis</h2>
           <ul className="list">
             {analysis.selectedSources.map((s) => (
               <li key={s.versionId}>
@@ -316,7 +316,7 @@ async function ScopeStep({ productId, analysis }: { productId: string; analysis:
                 {kindLabel(s.kind) ? <span className="tag">{kindLabel(s.kind)}</span> : null}
                 <span className="muted">
                   {" "}
-                  · {s.kind === "image" ? "打开后可转写" : "打开后可划选引用"}
+                  · {s.kind === "image" ? "open to transcribe" : "open to select citations"}
                 </span>
               </li>
             ))}
@@ -325,34 +325,34 @@ async function ScopeStep({ productId, analysis }: { productId: string; analysis:
       ) : null}
 
       <details className="disclosure">
-        <summary>调整范围（勾选本次使用的需求与资料）</summary>
-        <p className="help">已选文字资料共 {totalChars.toLocaleString()} 字符。保存后，已保存的报告不受影响；分析状态回到草稿。</p>
+        <summary>Adjust scope (choose the requests and sources to use)</summary>
+        <p className="help">Selected text sources: {plural(totalChars, "character")}. Saving does not change saved reports; the analysis goes back to draft.</p>
         {staleSelected.length ? (
           <p className="banner banner-warn">
-            已选的 {staleSelected.map((s) => `“${s.name}” v${s.version}`).join("、")} 有更新版本。保留旧版本会继续使用旧原文；如需更新，请勾选新版本。
+            A newer version exists for {staleSelected.map((s) => `"${s.name}" v${s.version}`).join(", ")}. Keeping the old version keeps using its old text; select the new version to update.
           </p>
         ) : null}
         <Form
           action={setScopeAction}
-          submit="保存范围"
+          submit="Save scope"
           fields={[
             { name: "productId", type: "hidden", defaultValue: productId },
             { name: "analysisId", type: "hidden", defaultValue: analysis.id },
             { name: "revision", type: "hidden", defaultValue: String(analysis.revision) },
             {
               name: "requestIds",
-              label: "需求",
+              label: "Requests",
               type: "checkboxes",
               defaultValue: analysis.requestIds,
               options: requests.map((r) => ({
                 value: r.id,
-                label: `${r.party}：${(r.fields as Record<string, string>).title || (r.originalText ?? "").slice(0, 40)}`,
-                hint: (r.originalText ?? "［来源已删除］").slice(0, 80),
+                label: `${r.party}: ${(r.fields as Record<string, string>).title || (r.originalText ?? "").slice(0, 40)}`,
+                hint: (r.originalText ?? "[source deleted]").slice(0, 80),
               })),
             },
             {
               name: "sourceVersionIds",
-              label: "资料（当前版本）",
+              label: "Sources (current versions)",
               type: "checkboxes",
               defaultValue: analysis.selectedSources.map((s) => s.versionId),
               options: [
@@ -361,15 +361,15 @@ async function ScopeStep({ productId, analysis }: { productId: string; analysis:
                   .map((s) => ({
                     value: s.versionId,
                     label: `${s.name} v${s.version}`,
-                    hint: s.kind === "image" ? "截图" : `${s.charCount.toLocaleString()} 字符${s.kind === "transcript" ? " · 转写" : ""}`,
+                    hint: s.kind === "image" ? "screenshot" : `${plural(s.charCount, "character")}${s.kind === "transcript" ? " · transcript" : ""}`,
                   })),
-                ...staleSelected.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}`, hint: "旧版本" })),
+                ...staleSelected.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}`, hint: "older version" })),
               ],
             },
           ]}
         />
         <p className="help">
-          文字资料（规则、接口说明）请在 <Link href={`${base}/sources/new`}>添加资料</Link> 页上传。
+          Upload text sources such as rules or interface docs on the <Link href={`${base}/sources/new`}>Add sources</Link> page.
         </p>
       </details>
     </section>
@@ -409,17 +409,17 @@ async function ClaimsStep({
       {!archived ? <AiPanel productId={productId} analysis={analysis} /> : null}
       {coverage.length ? (
         <div className="claim-group">
-          <h2>诉求覆盖</h2>
+          <h2>Request coverage</h2>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">需求</th>
-                  <th scope="col">业务方</th>
-                  <th scope="col">目标</th>
-                  <th scope="col">共同部分</th>
-                  <th scope="col">特有约束</th>
-                  <th scope="col">处理方式</th>
+                  <th scope="col">Request</th>
+                  <th scope="col">Party</th>
+                  <th scope="col">Goal</th>
+                  <th scope="col">Shared</th>
+                  <th scope="col">Specific constraints</th>
+                  <th scope="col">Handling</th>
                 </tr>
               </thead>
               <tbody>
@@ -445,7 +445,7 @@ async function ClaimsStep({
           return (
             <div key={section} className="claim-group">
               <h2>
-                {SECTION[section as ClaimSection]} <span className="muted">（{list.length}）</span>
+                {SECTION[section as ClaimSection]} <span className="muted">({list.length})</span>
               </h2>
               {list.map((c) => (
                 <ClaimCard key={c.id} claim={c} evidence={evidence} productId={productId} />
@@ -454,21 +454,21 @@ async function ClaimsStep({
           );
         })
       ) : (
-        <p className="empty">还没有条目。可以让模型生成，也可以手工添加。</p>
+        <p className="empty">No claims yet. Let the model draft them, or add them by hand.</p>
       )}
 
       {!archived ? (
         <details className="disclosure" id="add-claim" open={!claims.length || !!cite}>
-          <summary>添加条目（用户输入）</summary>
+          <summary>Add a claim (user input)</summary>
           <p className="help">
-            最快的方式：打开资料，<strong>用鼠标选中一句话</strong>，点“以此为依据添加条目”。
+            Quickest way: open a source, <strong>select a sentence with your mouse</strong>, and click "Add a claim based on this".
             {textSources.length ? (
               <>
                 {" "}
-                打开：
+                Open:
                 {textSources.map((s, i) => (
                   <span key={s.versionId}>
-                    {i ? "、" : ""}
+                    {i ? ", " : ""}
                     <Link href={`/p/${productId}/sources/${s.sourceId}?v=${s.versionId}&analysis=${analysis.id}`}>{s.name}</Link>
                   </span>
                 ))}
@@ -477,45 +477,45 @@ async function ClaimsStep({
           </p>
           <Form
             action={addClaimAction}
-            submit="添加条目"
+            submit="Add claim"
             fields={[
               { name: "productId", type: "hidden", defaultValue: productId },
               { name: "analysisId", type: "hidden", defaultValue: analysis.id },
               {
                 name: "kind",
-                label: "这是什么",
+                label: "What is it",
                 type: "select",
                 options: (["source_fact", "inference", "suggestion", "unknown"] as ClaimKind[]).map((k) => ({ value: k, label: `${KIND[k]} — ${KIND_HELP[k]}` })),
               },
-              { name: "text", label: "内容", type: "textarea", rows: 3, required: true },
-              { name: "reasoning", label: "理由 / 推导", type: "textarea", rows: 2, required: true, showWhen: { field: "kind", in: ["inference", "suggestion"] } },
-              { name: "missing", label: "缺少什么、找谁确认", type: "textarea", rows: 2, required: true, showWhen: { field: "kind", in: ["unknown"] } },
+              { name: "text", label: "Text", type: "textarea", rows: 3, required: true },
+              { name: "reasoning", label: "Reasoning", type: "textarea", rows: 2, required: true, showWhen: { field: "kind", in: ["inference", "suggestion"] } },
+              { name: "missing", label: "What is missing, and who can confirm it", type: "textarea", rows: 2, required: true, showWhen: { field: "kind", in: ["unknown"] } },
               {
                 name: "evidenceIds",
-                label: "依据",
+                label: "Based on",
                 type: "checkboxes",
                 defaultValue: cite ? [cite] : [],
                 options: options.map((e) => ({
                   value: e.id,
-                  label: (e.quote ?? "［已删除］").slice(0, 120),
-                  hint: `${e.sourceKind === "request_text" ? "需求原话" : e.sourceName} v${e.version} L${e.lineStart}${e.id === cite ? " · 刚选中" : ""}`,
+                  label: (e.quote ?? "[deleted]").slice(0, 120),
+                  hint: `${e.sourceKind === "request_text" ? "request text" : e.sourceName} v${e.version} L${e.lineStart}${e.id === cite ? " · just selected" : ""}`,
                 })),
               },
               {
                 name: "section",
-                label: "放在报告的哪一节",
+                label: "Report section",
                 type: "select",
                 advanced: true,
                 options: CLAIM_SECTIONS.map((s) => ({ value: s, label: SECTION[s] })),
               },
               {
                 name: "newQuoteVersionId",
-                label: "粘贴原句新增引用：来自",
+                label: "Or cite a pasted sentence from",
                 type: "select",
                 advanced: true,
-                options: [{ value: "", label: "（不新增）" }, ...textSources.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}` }))],
+                options: [{ value: "", label: "(none)" }, ...textSources.map((s) => ({ value: s.versionId, label: `${s.name} v${s.version}` }))],
               },
-              { name: "newQuote", label: "从原文复制的句子", type: "textarea", rows: 2, advanced: true },
+              { name: "newQuote", label: "Sentence copied from the source", type: "textarea", rows: 2, advanced: true },
             ]}
           />
         </details>
@@ -524,7 +524,7 @@ async function ClaimsStep({
   );
 }
 
-const HANDLING: Record<string, string> = { shared_capability: "纳入通用能力", configuration: "配置/扩展", separate: "分开处理", not_covered: "未覆盖" };
+const HANDLING: Record<string, string> = { shared_capability: "Shared capability", configuration: "Configuration / extension", separate: "Handle separately", not_covered: "Not covered" };
 
 async function AiPanel({ productId, analysis }: { productId: string; analysis: AnalysisData }) {
   const db = await getDb();
@@ -543,11 +543,11 @@ async function AiPanel({ productId, analysis }: { productId: string; analysis: A
   if (!preview.configured) {
     return (
       <section className="card ai-panel">
-        <h2>让模型生成分析</h2>
+        <h2>Draft the analysis with a model</h2>
         <p>
-          配置模型后，可以一键生成共同问题、通用能力建议、冲突和未知项，并读取聊天截图。<Link href="/settings#model">去配置模型</Link>
+          With a model configured, one click drafts the common problem, shared capability proposals, conflicts and unknowns, and can read chat screenshots. <Link href="/settings#model">Configure a model</Link>
         </p>
-        <p className="help">不配置模型也能手工完成全部流程。</p>
+        <p className="help">Everything can also be done by hand without a model.</p>
       </section>
     );
   }
@@ -555,29 +555,29 @@ async function AiPanel({ productId, analysis }: { productId: string; analysis: A
   return (
     <section className="card ai-panel">
       <RunWatcher url={`/p/${productId}/a/${analysis.id}/runs`} active={active.map((r) => `${r.id}:${r.status}`).join()} />
-      <h2>让模型生成分析</h2>
+      <h2>Draft the analysis with a model</h2>
       {active.map((r) => (
         <div key={r.id} className="run-line" role="status">
           <span className="tag tag-pending_review">{RUN_STATUS[r.status]}</span>
           <span>{TASK_LABEL[r.taskType] ?? r.taskType}</span>
-          <Form action={cancelRunAction} submit="取消" tone="secondary" inline fields={[{ name: "productId", type: "hidden", defaultValue: productId }, { name: "runId", type: "hidden", defaultValue: r.id }]} />
+          <Form action={cancelRunAction} submit="Cancel" tone="secondary" inline fields={[{ name: "productId", type: "hidden", defaultValue: productId }, { name: "runId", type: "hidden", defaultValue: r.id }]} />
         </div>
       ))}
-      {active.length ? <p className="help">运行时可以继续做别的事，也可以关闭页面。取消会尽力中止请求，但服务商可能已经计费。</p> : null}
+      {active.length ? <p className="help">You can keep working or close the page while it runs. Cancel stops the request where it can, but the provider may already have billed it.</p> : null}
       {failed.map((r) => {
         const risky = r.errorKind === "outcome_unknown" || r.errorKind === "interrupted";
         return (
           <div key={r.id} className="banner banner-danger">
             <p>
-              {TASK_LABEL[r.taskType] ?? r.taskType}{RUN_STATUS[r.status]}：{r.errorMessage}
+              {TASK_LABEL[r.taskType] ?? r.taskType} {RUN_STATUS[r.status]?.toLowerCase()}: {r.errorMessage}
             </p>
             {r.errorKind && FAILURE_HINT[r.errorKind] ? <p>{FAILURE_HINT[r.errorKind]}</p> : null}
             <Form
               action={retryRunAction}
-              submit="重试"
+              submit="Retry"
               tone="secondary"
               inline
-              confirm={risky ? "上次的结果未知，服务商可能已经计费。重试可能产生额外费用，继续吗？" : undefined}
+              confirm={risky ? "The last outcome is unknown and the provider may already have billed it. Retrying may cost extra. Continue?" : undefined}
               fields={[
                 { name: "productId", type: "hidden", defaultValue: productId },
                 { name: "runId", type: "hidden", defaultValue: r.id },
@@ -587,15 +587,15 @@ async function AiPanel({ productId, analysis }: { productId: string; analysis: A
           </div>
         );
       })}
-      {stale ? <p className="banner banner-warn">需求或资料范围已变化，当前结果基于旧范围。可以重新生成。</p> : null}
+      {stale ? <p className="banner banner-warn">The requests or sources changed since this result was generated. You can regenerate.</p> : null}
       {preview.untranscribed.length ? (
         <div className="section">
           <p>
-            有 {preview.untranscribed.length} 张截图还没有转写，<strong>不会</strong>进入分析。读取时，截图原图会发送给 {preview.host}。
+            {plural(preview.untranscribed.length, "screenshot")} not transcribed yet and will <strong>not</strong> be part of the analysis. Reading sends the original images to {preview.host}.
           </p>
           <Form
             action={startTranscribeAction}
-            submit={`读取 ${preview.untranscribed.length} 张截图`}
+            submit={`Read ${plural(preview.untranscribed.length, "screenshot")}`}
             tone="secondary"
             inline
             fields={[...base, ...preview.untranscribed.map((u, i) => ({ name: "imageVersionId", type: "hidden" as const, defaultValue: u.versionId, key: i }))]}
@@ -603,18 +603,18 @@ async function AiPanel({ productId, analysis }: { productId: string; analysis: A
         </div>
       ) : null}
       <details className="disclosure" open={!latest}>
-        <summary>这次会发送什么</summary>
+        <summary>What will be sent</summary>
         <ul className="list compact">
           <li>
-            发送到：{preview.host}（模型 {preview.modelName}）
+            To: {preview.host} (model {preview.modelName})
           </li>
-          <li>需求 {preview.requests.length} 条：{preview.requests.map((r) => r.party).join("、") || "无"}</li>
+          <li>{plural(preview.requests.length, "request")}: {preview.requests.map((r) => r.party).join(", ") || "none"}</li>
           <li>
-            资料 {preview.sources.length} 份：
-            {preview.sources.map((s) => `${s.name}（${s.chars.toLocaleString()} 字符）`).join("、") || "无"}
+            {plural(preview.sources.length, "source")}:{" "}
+            {preview.sources.map((s) => `${s.name} (${plural(s.chars, "character")})`).join(", ") || "none"}
           </li>
-          <li>约 {preview.inputTokens.toLocaleString()} 输入 tokens（估算）</li>
-          <li>估算费用：{preview.cost ? `$${preview.cost.min.toFixed(4)} – $${preview.cost.max.toFixed(4)}` : "未知（未填写单价）"}</li>
+          <li>About {preview.inputTokens.toLocaleString("en-US")} input tokens (estimate)</li>
+          <li>Estimated cost: {preview.cost ? `$${preview.cost.min.toFixed(4)} – $${preview.cost.max.toFixed(4)}` : "unknown (no prices set)"}</li>
         </ul>
       </details>
       {preview.blockers.map((b) => (
@@ -623,9 +623,9 @@ async function AiPanel({ productId, analysis }: { productId: string; analysis: A
         </p>
       ))}
       {!preview.blockers.length && !active.length ? (
-        <Form action={startAbstractionAction} submit={lastGood ? "重新生成" : "生成分析"} fields={base} />
+        <Form action={startAbstractionAction} submit={lastGood ? "Regenerate" : "Draft analysis"} fields={base} />
       ) : null}
-      {lastGood ? <p className="help">重新生成会替换未核对的 AI 条目；你已接受、修正或不采纳的条目会保留。</p> : null}
+      {lastGood ? <p className="help">Regenerating replaces AI claims you have not reviewed. Claims you accepted, corrected or rejected are kept.</p> : null}
     </section>
   );
 }
@@ -637,21 +637,21 @@ async function ReportStep({ productId, analysisId, pending }: { productId: strin
   const open = openItems(draft);
   const steps = nextSteps(draft);
   const base = `/p/${productId}/a/${analysisId}`;
-  const STEP_KIND = { decide: "需要决策", supply: "需要补充或确认", verify: "需要验证", review: "需要评审的建议" } as const;
+  const STEP_KIND = { decide: "Decisions needed", supply: "Material to supply or confirm", verify: "To verify", review: "Suggestions to review" } as const;
 
   return (
     <section className="section">
       <div className="card">
-        <h2>保存报告版本</h2>
+        <h2>Save a report version</h2>
         <p>
-          当前内容保存后的状态：<strong>{REPORT_STATUS[status]}</strong>
-          {pending ? `（还有 ${pending} 条待核对，只能保存为草稿）` : ""}
-          {open.length ? `，${open.length} 个未决项会写入报告` : ""}。
+          Saving now gives the status <strong>{REPORT_STATUS[status]}</strong>
+          {pending ? ` (${plural(pending, "claim")} still pending, so it saves as a draft)` : ""}
+          {open.length ? `; ${plural(open.length, "open item")} will be listed in the report` : ""}.
         </p>
-        <p className="help">每次保存都会生成不可修改的新版本；旧版本始终可以查看。“已核对”只表示所有条目都检查过，不保证正确或完整。</p>
+        <p className="help">Each save creates a new version that cannot be changed; older versions stay available. "Reviewed" only means every claim was checked, not that the report is correct or complete.</p>
         <Form
           action={saveReportAction}
-          submit="保存报告版本"
+          submit="Save report version"
           fields={[
             { name: "productId", type: "hidden", defaultValue: productId },
             { name: "analysisId", type: "hidden", defaultValue: analysisId },
@@ -659,8 +659,8 @@ async function ReportStep({ productId, analysisId, pending }: { productId: strin
         />
       </div>
       <div className="card">
-        <h2>建议的下一步（{steps.length}）</h2>
-        <p className="help">由已核对条目和已确认依赖自动整理，会写入报告。这是行动清单，不是结论。</p>
+        <h2>Suggested next steps ({steps.length})</h2>
+        <p className="help">Assembled from reviewed claims and confirmed dependencies, and included in the report. An action list, not conclusions.</p>
         {steps.length ? (
           (["decide", "supply", "verify", "review"] as const).map((k) => {
             const list = steps.filter((s) => s.kind === k);
@@ -677,10 +677,10 @@ async function ReportStep({ productId, analysisId, pending }: { productId: strin
             );
           })
         ) : (
-          <p className="empty">还没有可整理的冲突、未知项或依赖。</p>
+          <p className="empty">No conflicts, unknowns or dependencies to act on yet.</p>
         )}
       </div>
-      <h2>已保存版本</h2>
+      <h2>Saved versions</h2>
       {versions.length ? (
         <ul className="list">
           {versions.map((v) => (
@@ -691,7 +691,7 @@ async function ReportStep({ productId, analysisId, pending }: { productId: strin
           ))}
         </ul>
       ) : (
-        <p className="empty">还没有保存的报告版本。</p>
+        <p className="empty">No report versions saved yet.</p>
       )}
     </section>
   );

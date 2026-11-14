@@ -22,8 +22,8 @@ export interface SplitResult {
 
 export const MAX_SPLIT_CANDIDATES = 50;
 
-const PARTY_HEADER = /^(业务方|业务线|提出方|提出人|需求方|部门|团队|客户|角色|party|from|requester|team)$/i;
-const TEXT_HEADER = /^(原话|原文|需求|需求描述|描述|内容|诉求|问题|反馈|text|request|description|content)$/i;
+const PARTY_HEADER = /^(业务方|业务线|提出方|提出人|需求方|部门|团队|客户|角色|party|from|requester|requested by|team|department|stakeholder|business line)$/i;
+const TEXT_HEADER = /^(原话|原文|需求|需求描述|描述|内容|诉求|问题|反馈|text|request|description|content|details|feedback|ask)$/i;
 const TITLE_HEADER = /^(标题|主题|摘要|需求名称|名称|title|summary|subject)$/i;
 
 function clean(s: string): string {
@@ -105,9 +105,11 @@ function avgLen(rows: string[][], col: number): number {
 }
 
 // "运营：……" / "张三(销售): ……"
-const PREFIX = /^\s*([^\s：:，。,.!?！？]{1,16}(?:[（(][^）)]{1,12}[）)])?)\s*[：:]\s*(\S[\s\S]*)$/;
+// Up to three words, so "Dana Smith (Ops):" works as well as "运营：".
+const WORD = "[^\\s：:，。,.!?！？()（）]{1,16}";
+const PREFIX = new RegExp(`^\\s*(${WORD}(?: ${WORD}){0,2}(?:\\s?[（(][^）)]{1,16}[）)])?)\\s*[：:]\\s*(\\S[\\s\\S]*)$`);
 // Chat exports: "张三 10:32", "张三 2026-11-01 10:32:05", "张三  昨天 18:20"
-const CHAT_HEADER = /^\s*(\S.{0,29}?)\s+(?:(?:\d{4}[-/.年])?\d{1,2}[-/.月]\d{1,2}日?\s+|昨天\s+|今天\s+|星期.\s+)?\d{1,2}:\d{2}(?::\d{2})?\s*$/;
+const CHAT_HEADER = /^\s*(\S.{0,29}?),?\s+(?:(?:\d{4}[-/.年])?\d{1,2}[-/.月]\d{1,2}日?,?\s+|昨天\s+|今天\s+|星期.\s+|(?:yesterday|today|mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?\d{1,2}:\d{2}(?::\d{2})?(?:\s?[ap]\.?m\.?)?\s*$/i;
 // "1. " and "1) " need a space (so "1.5倍" is not a list); "2、" and "（3）" often have none.
 const BULLET = /^\s*(?:\d{1,3}[.)）]\s+|\d{1,3}、\s*|[-*•·]\s+|[（(]\d{1,3}[）)]\s*)/;
 
@@ -122,10 +124,12 @@ function foldClarifications(items: SplitCandidate[]): SplitCandidate[] {
   const out: SplitCandidate[] = [];
   let labelled = false;
   let afterSelf = false;
+  // Chinese text keeps the full-width colon it was written with.
+  const label = (c: SplitCandidate) => `${c.party ?? ""}${/[\u3400-\u9fff]/.test(`${c.party}${c.text}`) ? "：" : ": "}${c.text}`;
   const append = (target: SplitCandidate, c: SplitCandidate) => {
-    if (!labelled) target.text = `${target.party ?? ""}：${target.text}`;
+    if (!labelled) target.text = label(target);
     labelled = true;
-    target.text += `\n${c.party ?? ""}：${c.text}`;
+    target.text += `\n${label(c)}`;
   };
   for (const c of items) {
     const last = out[out.length - 1];

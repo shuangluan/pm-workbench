@@ -11,28 +11,28 @@ export default async function NewSourcePage({ params }: { params: Promise<{ prod
   const product = await found(getProduct(await getDb(), productId));
   return (
     <>
-      <nav className="crumbs" aria-label="位置">
-        <Link href="/">产品</Link> / <Link href={`/p/${productId}`}>{product.name}</Link> / <span>添加资料</span>
+      <nav className="crumbs" aria-label="Breadcrumb">
+        <Link href="/">Products</Link> / <Link href={`/p/${productId}`}>{product.name}</Link> / <span>Add sources</span>
       </nav>
-      <h1>添加资料</h1>
+      <h1>Add sources</h1>
       <p className="muted">
-        支持 UTF-8 的 TXT / Markdown 或直接粘贴文字。单文件不超过 2 MB、100,000 字符，一次最多 10 个文件。内容相同的资料会复用，不会重复保存；上传不会调用 AI。
+        UTF-8 TXT or Markdown, or pasted text. Up to 2 MB and 100,000 characters per file, 10 files at a time. Identical content is reused rather than stored twice, and uploading never calls a model.
       </p>
       <section className="card">
-        <h2>聊天截图</h2>
+        <h2>Chat screenshots</h2>
         <ScreenshotUploadForm action={uploadImagesAction} productId={productId} />
       </section>
       <section className="card">
-        <h2>文字资料</h2>
+        <h2>Text sources</h2>
         <Form
           action={addSourcesAction}
-          submit="保存"
+          submit="Save"
           fields={[
             { name: "productId", type: "hidden", defaultValue: productId },
-            { name: "files", label: "上传文件", type: "file", multiple: true, accept: ".txt,.md,.markdown,text/plain,text/markdown" },
-            { name: "name", label: "粘贴资料的名称", type: "text", placeholder: "例如：权限规则说明" },
-            { name: "text", label: "或粘贴文字", type: "textarea", rows: 12, mono: true },
-            { name: "originalUrl", label: "原始链接（只作记录，不会访问）", type: "text" },
+            { name: "files", label: "Upload files", type: "file", multiple: true, accept: ".txt,.md,.markdown,text/plain,text/markdown" },
+            { name: "name", label: "Name of the pasted source", type: "text", placeholder: "e.g. Permission rules" },
+            { name: "text", label: "Or paste text", type: "textarea", rows: 12, mono: true },
+            { name: "originalUrl", label: "Original link (recorded only, never fetched)", type: "text" },
           ]}
         />
       </section>

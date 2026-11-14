@@ -5,8 +5,8 @@ import { analyses, analysisRuns, products, reportVersions, requests, sources } f
 
 export async function createProduct(db: Db, input: { name: string; description?: string }) {
   const name = input.name.trim();
-  if (!name) throw new AppError("invalid_input", "产品名称不能为空");
-  if (name.length > 120) throw new AppError("invalid_input", "产品名称最多 120 个字符");
+  if (!name) throw new AppError("invalid_input", "The product needs a name");
+  if (name.length > 120) throw new AppError("invalid_input", "Product names can have at most 120 characters");
   const [row] = await db
     .insert(products)
     .values({ id: newId("prod"), name, description: (input.description ?? "").trim() })
@@ -38,7 +38,7 @@ export async function listProducts(db: Db) {
 
 export async function getProduct(db: Db, productId: string) {
   const [row] = await db.select().from(products).where(eq(products.id, productId));
-  if (!row) throw notFound("产品");
+  if (!row) throw notFound("Product");
   return row;
 }
 
@@ -64,7 +64,7 @@ export async function productDeletionPreview(db: Db, productId: string) {
 export async function deleteProduct(db: Db, productId: string, confirmName: string) {
   const product = await getProduct(db, productId);
   if (!product.isExample && confirmName.trim() !== product.name) {
-    throw new AppError("invalid_input", "输入的产品名称不一致，未删除");
+    throw new AppError("invalid_input", "The product name does not match; nothing was deleted");
   }
   await db.transaction(async (tx) => {
     await tx

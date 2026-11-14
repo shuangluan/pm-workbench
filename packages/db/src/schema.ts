@@ -347,7 +347,7 @@ export const claims = pgTable(
     position: integer("position").notNull(),
     section: text("section").notNull(),
     kind: text("kind", { enum: ["source_fact", "confirmed_relation", "inference", "suggestion", "unknown"] }).notNull(),
-    /** User-written claims are labelled "用户输入", never passed off as source text (§3.3 rule 4). */
+    /** User-written claims are labelled "User input", never passed off as source text (§3.3 rule 4). */
     origin: text("origin", { enum: ["model", "user"] }).notNull().default("model"),
     text: text("text").notNull(),
     reasoning: text("reasoning"),

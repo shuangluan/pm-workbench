@@ -52,20 +52,20 @@ export async function getModelConfig(db: Db): Promise<ModelConfigView | null> {
 const price = (v?: string) => {
   const t = v?.trim();
   if (!t) return null;
-  if (!/^\d+(\.\d+)?$/.test(t)) throw new AppError("invalid_input", "单价必须是数字");
+  if (!/^\d+(\.\d+)?$/.test(t)) throw new AppError("invalid_input", "Prices must be numbers");
   return t;
 };
 
 export async function saveModelConfig(db: Db, dataDir: string, input: ModelConfigInput) {
-  if (!ADAPTER_DEFAULTS[input.adapter]) throw new AppError("invalid_input", "未知的适配器");
-  if (!input.model.trim()) throw new AppError("invalid_input", "请填写模型 ID");
+  if (!ADAPTER_DEFAULTS[input.adapter]) throw new AppError("invalid_input", "Unknown interface");
+  if (!input.model.trim()) throw new AppError("invalid_input", "Enter a model ID");
   try {
     validateEndpoint(input.endpoint, input.allowLocalHttp);
   } catch (err) {
-    throw new AppError("invalid_input", err instanceof Error ? err.message : "端点无效");
+    throw new AppError("invalid_input", err instanceof Error ? err.message : "Invalid endpoint");
   }
-  for (const [label, n, min] of [["上下文上限", input.contextLimit, 1000], ["输出上限", input.outputLimit, 256], ["超时", input.timeoutSeconds, 5]] as const) {
-    if (!Number.isInteger(n) || n < min) throw new AppError("invalid_input", `${label}需要是不小于 ${min} 的整数`);
+  for (const [label, n, min] of [["Context limit", input.contextLimit, 1000], ["Output limit", input.outputLimit, 256], ["Timeout", input.timeoutSeconds, 5]] as const) {
+    if (!Number.isInteger(n) || n < min) throw new AppError("invalid_input", `${label} must be a whole number of at least ${min}`);
   }
   const key = input.apiKey?.trim();
   const values = {
@@ -93,7 +93,7 @@ export async function removeModelKey(db: Db) {
 /** Decrypted endpoint for an actual call. Stays on the server. */
 export async function resolveModelEndpoint(db: Db, dataDir: string): Promise<ModelEndpoint & { pricing: { inputPerMillion?: number; outputPerMillion?: number } }> {
   const [row] = await db.select().from(modelConfigs).where(eq(modelConfigs.isActive, true));
-  if (!row?.apiKeyCiphertext) throw new AppError("not_initialized", "尚未配置模型密钥");
+  if (!row?.apiKeyCiphertext) throw new AppError("not_initialized", "No model key is configured");
   return {
     adapter: row.adapter,
     endpoint: row.endpoint,

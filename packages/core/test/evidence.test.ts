@@ -78,6 +78,14 @@ describe("evidence location", () => {
   });
 });
 
+describe("sentenceSpans", () => {
+  it("splits English and Chinese sentences without breaking decimals", async () => {
+    const { sentenceSpans } = await import("@pew/core");
+    const text = "Members see their own customers. Export takes 1.5 s! 仅本人可见。团队可见。";
+    expect(sentenceSpans(text).map((s) => text.slice(s.start, s.end))).toEqual(["Members see their own customers.", "Export takes 1.5 s!", "仅本人可见。", "团队可见。"]);
+  });
+});
+
 describe("chunkText", () => {
   it("splits on headings and blank lines with exact offsets and heading trail", () => {
     const text = "# 权限\n\n## 范围\n\n普通成员只能访问自己的客户。\n团队负责人可访问团队客户。\n\n# 导出\n同步CSV。";

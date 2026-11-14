@@ -22,7 +22,7 @@ if (process.stdout.isTTY) {
         const { code } = await issueSetupCode(dataDir);
         const port = process.env.PORT ?? "3210";
         process.stdout.write(
-          ["", "  首次使用 · First run", "", `  1. 打开 Open  http://127.0.0.1:${port}/login`, `  2. 输入初始化码 Enter this setup code:  ${code}`, "", "  30 分钟内有效，只显示这一次。Valid for 30 minutes, shown only here.", "", ""].join("\n"),
+          ["", "  First run", "", `  1. Open http://127.0.0.1:${port}/login`, `  2. Enter this setup code: ${code}`, "", "  Valid for 30 minutes, shown only here.", "", ""].join("\n"),
         );
       }
     }

@@ -41,8 +41,8 @@ export async function loadExample(db: Db): Promise<string> {
   await db.transaction(async (tx) => {
     await tx.insert(products).values({
       id: productId,
-      name: "客户管理平台（示例）",
-      description: `${example.EXAMPLE_LABEL}：合成公司与需求，可一键清除。`,
+      name: "Customer platform (example)",
+      description: `${example.EXAMPLE_LABEL}: a made-up company and requests. Remove it any time.`,
       isExample: true,
     });
     for (const s of example.sources) {
@@ -83,7 +83,7 @@ export async function loadExample(db: Db): Promise<string> {
         type: e.type,
         confirmation: "confirmed",
         basis: "user_asserted",
-        note: "示例：用户确认，暂无文档佐证",
+        note: "Example: confirmed by the user, no supporting document yet",
         confirmedAt: new Date(),
       });
     }
@@ -93,7 +93,7 @@ export async function loadExample(db: Db): Promise<string> {
     db,
     productId,
     `example:${productId}`,
-    example.requests.map((r) => ({ party: r.party, originalText: r.originalText, sourceName: "示例访谈", fields: { title: r.title } })),
+    example.requests.map((r) => ({ party: r.party, originalText: r.originalText, sourceName: "Example interviews", fields: { title: r.title } })),
   );
 
   const analysisId = newId("ana");
@@ -102,9 +102,9 @@ export async function loadExample(db: Db): Promise<string> {
     await tx.insert(analyses).values({
       id: analysisId,
       productId,
-      title: "统一批量导出能力",
-      goal: "判断三方导出诉求能否归入一个通用导出能力，并检查权限服务变更的影响。",
-      changeDescription: "调整权限服务的客户可见范围判定。",
+      title: "Unified bulk export",
+      goal: "Decide whether three export requests can become one shared export capability, and check the impact of a permission service change.",
+      changeDescription: "Change how the permission service decides which customers are visible.",
       changeNodeIds: [ids.get("n_permission")!],
       status: "pending_review",
     });

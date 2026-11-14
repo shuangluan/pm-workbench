@@ -19,6 +19,7 @@ import { getAnalysis, setAnalysisStatus } from "./analyses";
 import { listClaims } from "./claims";
 import { analysisImpact } from "./memory";
 import { listRequests } from "./requests";
+import { DELETED_PLACEHOLDER } from "./sources";
 
 export const TEMPLATE_VERSION = "report-v0.1";
 export const EXPORT_SCHEMA = "pew-report/1";
@@ -91,7 +92,7 @@ export async function buildSnapshot(db: Db, productId: string, analysisId: strin
       evidenceId: r.originalEvidenceId,
       party: r.party,
       title: (r.fields as Record<string, string>).title ?? "",
-      originalText: r.originalText ?? "［来源已删除，原句不再保留］",
+      originalText: r.originalText ?? DELETED_PLACEHOLDER,
     })),
     sources: analysis.selectedSources.map((s) => ({ name: s.name, version: s.version, validity: s.validity, sourceVersionId: s.versionId })),
     coverage,
@@ -157,7 +158,7 @@ export async function getReportVersion(db: Db, productId: string, analysisId: st
     .select()
     .from(reportVersions)
     .where(and(eq(reportVersions.productId, productId), eq(reportVersions.analysisId, analysisId), eq(reportVersions.version, version)));
-  if (!row) throw notFound("报告版本");
+  if (!row) throw notFound("Report version");
   return { ...row, snapshot: row.snapshot as ReportSnapshot };
 }
 

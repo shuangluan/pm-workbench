@@ -102,13 +102,13 @@ async function createSession(db: Db, now: Date): Promise<string> {
  */
 export async function completeSetup(db: Db, dataDir: string, code: string, passphrase: string, now = new Date()): Promise<string> {
   if (passphrase.length < MIN_PASSPHRASE_LENGTH) {
-    throw new AppError("invalid_input", `访问口令至少 ${MIN_PASSPHRASE_LENGTH} 个字符`);
+    throw new AppError("invalid_input", `The passphrase needs at least ${MIN_PASSPHRASE_LENGTH} characters`);
   }
   const file = readSetupFile(dataDir);
   // Dashes and spacing are display-only.
   const normalized = code.toUpperCase().replace(/[^0-9A-Z]/g, "");
   if (!file || new Date(file.expiresAt) <= now || !(await verifySecret(normalized, file.hash))) {
-    throw new AppError("unauthorized", "初始化码无效或已过期。请在终端重新运行 npm run access:reset。");
+    throw new AppError("unauthorized", "The setup code is invalid or expired. Run npm run access:reset in a terminal again.");
   }
   const credential = await hashSecret(passphrase);
 
@@ -120,7 +120,7 @@ export async function completeSetup(db: Db, dataDir: string, code: string, passp
       .returning({ s: instanceState.singleton });
     if (!inserted.length) {
       const [row] = await tx.select().from(instanceState).for("update");
-      if (row?.lastSetupCodeId === file.codeId) throw new AppError("unauthorized", "该初始化码已被使用。");
+      if (row?.lastSetupCodeId === file.codeId) throw new AppError("unauthorized", "This setup code was already used.");
       await tx
         .update(instanceState)
         .set({ accessCredentialHash: credential, lastSetupCodeId: file.codeId, credentialUpdatedAt: now });
@@ -133,9 +133,9 @@ export async function completeSetup(db: Db, dataDir: string, code: string, passp
 
 export async function login(db: Db, passphrase: string, now = new Date()): Promise<string> {
   const [row] = await db.select().from(instanceState);
-  if (!row) throw new AppError("not_initialized", "实例尚未初始化");
+  if (!row) throw new AppError("not_initialized", "This instance is not set up yet");
   if (!(await verifySecret(passphrase, row.accessCredentialHash))) {
-    throw new AppError("unauthorized", "访问口令不正确");
+    throw new AppError("unauthorized", "Wrong passphrase");
   }
   return createSession(db, now);
 }

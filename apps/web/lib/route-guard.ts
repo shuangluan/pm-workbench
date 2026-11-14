@@ -5,7 +5,7 @@ import { isSignedIn } from "./auth";
 /** Route handlers return the §7.4 JSON error shape instead of redirecting. */
 export async function guarded(fn: () => Promise<Response>): Promise<Response> {
   if (!(await isSignedIn())) {
-    return NextResponse.json({ code: "unauthorized", message: "请先登录", retryable: false, details: {} }, { status: 401 });
+    return NextResponse.json({ code: "unauthorized", message: "Sign in first", retryable: false, details: {} }, { status: 401 });
   }
   try {
     return await fn();

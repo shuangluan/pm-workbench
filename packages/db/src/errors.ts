@@ -27,10 +27,10 @@ export class AppError extends Error {
   }
 }
 
-export const notFound = (what: string) => new AppError("not_found", `${what}不存在或不属于当前产品`);
+export const notFound = (what: string) => new AppError("not_found", `${what} not found in this product`);
 
 export const revisionConflict = () =>
-  new AppError("conflict", "内容已在其他标签页或窗口中修改。请复制你的修改，刷新后重试。");
+  new AppError("conflict", "This was changed in another tab or window. Copy your edits, refresh, and try again.");
 
 export function newId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`;

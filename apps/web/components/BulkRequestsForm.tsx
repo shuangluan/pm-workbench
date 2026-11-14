@@ -36,7 +36,7 @@ export function BulkRequestsForm({
   // The split runs as a background task; poll until it finishes.
   const modelSplit = async (text: string): Promise<ModelSplitResult> => {
     const started = await startSplitAction({ productId, analysisId: analysisId!, text, key: crypto.randomUUID() });
-    if (!started.runId) return { error: started.error ?? "无法开始拆分" };
+    if (!started.runId) return { error: started.error ?? "Could not start the split" };
     for (;;) {
       await new Promise((ok) => setTimeout(ok, 1500));
       const res = await fetch(`/p/${productId}/a/${analysisId}/runs`, { cache: "no-store" }).catch(() => null);
@@ -44,7 +44,7 @@ export function BulkRequestsForm({
       const run = ((await res.json()) as RunStatus[]).find((r) => r.id === started.runId);
       if (!run || run.status === "queued" || run.status === "running") continue;
       if (run.status === "succeeded" && run.output) return run.output;
-      return { error: run.errorMessage ?? "拆分没有完成，可以用“识别拆分”" };
+      return { error: run.errorMessage ?? "The split did not finish. You can use Split instead." };
     }
   };
 
@@ -65,7 +65,7 @@ export function BulkRequestsForm({
       <RequestImporter rows={rows} onChange={setRows} initialText={initialText} modelSplit={modelReady && analysisId ? modelSplit : undefined} />
       <div className="form-actions">
         <button type="submit" className="btn btn-primary" disabled={!payload.length || pending}>
-          {pending ? "保存中…" : `保存 ${payload.length} 条需求${analysisId ? "并加入本次分析" : ""}`}
+          {pending ? "Saving…" : `Save ${payload.length === 1 ? "1 request" : `${payload.length} requests`}${analysisId ? " to this analysis" : ""}`}
         </button>
         <span role="status" aria-live="polite">
           {state.error ? <span className="error">{state.error}</span> : null}
