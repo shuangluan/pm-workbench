@@ -6,7 +6,7 @@ Helps platform and B2B product managers turn requests from many stakeholders int
 
 > **Status: M2 preview.** Quick start (paste chat logs, tables or screenshots, plus source documents) → generate an abstraction with your own model, or add claims by hand → review each claim → save a report version with suggested next steps → export Markdown or a product ZIP. The whole flow also works by hand without a model.
 >
-> **The model path has only been tested with a mock server and local tests. It has not been evaluated with a real model, so analysis quality is unknown.** Impact inference and the local memory pages are planned for M3.
+> **The model path has been tried by hand with `claude-opus-5-5` on one synthetic scenario (see [docs/model-trial-2026-11-13.md](docs/model-trial-2026-11-13.md)). There is no evaluation set yet, so analysis quality is not measured.** Impact inference and the local memory pages are planned for M3.
 
 > **Language:** the web interface, error messages, reports and model prompts are in English. Your sources and requests can be in any language: quoted evidence stays in its original language, model output follows the language of your material, and the request splitter understands both English and Chinese formats.
 
