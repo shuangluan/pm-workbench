@@ -5,7 +5,9 @@ import {
   abstractionPrompt,
   checkBudget,
   estimateCost,
-  estimateTokens,
+  estimateRequestTokens,
+  ABSTRACTION_SCHEMA,
+  SPLIT_SCHEMA,
   EvidenceRegistry,
   sentenceSpans,
   ABSTRACTION_SYSTEM,
@@ -131,7 +133,7 @@ async function buildAbstraction(db: Db, productId: string, analysisId: string) {
   }
 
   const prompt = abstractionPrompt({ goal: analysis.goal, requests, registry: registryFor(productId, evidence) });
-  const inputTokens = estimateTokens(ABSTRACTION_SYSTEM) + estimateTokens(prompt);
+  const inputTokens = estimateRequestTokens({ system: ABSTRACTION_SYSTEM, text: prompt, schema: ABSTRACTION_SCHEMA });
   return { analysis, config, requests, evidence, textSources, inputTokens };
 }
 
@@ -237,7 +239,7 @@ export async function startSplit(db: Db, productId: string, analysisId: string, 
   const body = text.trim();
   if (!body) throw new AppError("invalid_input", "There is no text to split");
   if (body.length > 20_000) throw new AppError("invalid_input", "At most 20,000 characters at a time; split it into batches");
-  const budget = checkBudget({ inputTokens: estimateTokens(SPLIT_SYSTEM) + estimateTokens(splitPrompt(body)), contextLimit: config.contextLimit, outputLimit: config.outputLimit });
+  const budget = checkBudget({ inputTokens: estimateRequestTokens({ system: SPLIT_SYSTEM, text: splitPrompt(body), schema: SPLIT_SCHEMA }), contextLimit: config.contextLimit, outputLimit: config.outputLimit });
   if (!budget.ok) throw new AppError("invalid_input", `The input is about ${budget.overBy.toLocaleString("en-US")} tokens over the model's budget`);
   return enqueue(db, productId, analysisId, "split_requests", key, {
     templateVersion: TEMPLATE_VERSIONS.split_requests,

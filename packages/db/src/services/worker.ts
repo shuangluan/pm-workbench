@@ -14,6 +14,7 @@ import {
   parseAbstraction,
   parseSplit,
   parseTranscript,
+  replaceHandleMentions,
   shouldAutoRetry,
   SPLIT_SCHEMA,
   SPLIT_SYSTEM,
@@ -29,7 +30,7 @@ import { callModel, ModelError, type CallModel, type ModelRequest } from "@pew/m
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db, Tx } from "../client";
 import { AppError, newId } from "../errors";
-import { analyses, analysisRuns, claimEvidences, claims, usageRecords } from "../schema";
+import { analyses, analysisRuns, claimEvidences, claims, sourceVersions, sources, usageRecords } from "../schema";
 import { appendToScope } from "./analyses";
 import { readImage, saveTranscript } from "./media";
 import { resolveModelEndpoint } from "./models";
@@ -107,7 +108,26 @@ async function finishSucceeded(db: Db, runId: string, write: (tx: Tx) => Promise
 async function writeAbstraction(tx: Tx, run: Run, input: RunInput, value: Extract<ReturnType<typeof parseAbstraction>, { ok: true }>["value"]) {
   const registry = registryFor(run.productId, input.evidence ?? []);
   const requests = input.requests ?? [];
-  for (const [position, draft] of value.claims.entries()) {
+  // Name each handle's source, to clean handles out of the prose below.
+  const versionIds = [...new Set((input.evidence ?? []).map((c) => c.versionId))];
+  const names = new Map(
+    (versionIds.length
+      ? await tx
+          .select({ id: sourceVersions.id, name: sources.name })
+          .from(sourceVersions)
+          .innerJoin(sources, eq(sources.id, sourceVersions.sourceId))
+          .where(inArray(sourceVersions.id, versionIds))
+      : []
+    ).map((r) => [r.id, r.name]),
+  );
+  const labelOf = (handle: string) => {
+    const entry = registry.get(handle);
+    const name = entry && names.get(entry.sourceVersionId);
+    return name ? `"${name}"` : undefined;
+  };
+  const clean = (s?: string) => (s === undefined ? undefined : replaceHandleMentions(s, labelOf));
+  for (const [position, raw] of value.claims.entries()) {
+    const draft = { ...raw, text: clean(raw.text)!, reasoning: clean(raw.reasoning), missing: clean(raw.missing) };
     const refs = [...new Map(draft.evidence.map((e) => [e.handle, e])).values()];
     const validities: EvidenceValidity[] = [];
     const evidenceIds: string[] = [];
@@ -138,7 +158,13 @@ async function writeAbstraction(tx: Tx, run: Run, input: RunInput, value: Extrac
   }
   await tx.update(analyses).set({ status: "pending_review", updatedAt: new Date() }).where(eq(analyses.id, run.analysisId));
   return {
-    coverage: value.coverage.map(({ requestHandle, evidence: _e, ...row }) => ({ ...row, requestId: requests.find((r) => r.handle === requestHandle)!.requestId })),
+    coverage: value.coverage.map(({ requestHandle, evidence: _e, ...row }) => ({
+      ...row,
+      goal: clean(row.goal)!,
+      shared: clean(row.shared)!,
+      specific: clean(row.specific)!,
+      requestId: requests.find((r) => r.handle === requestHandle)!.requestId,
+    })),
   };
 }
 

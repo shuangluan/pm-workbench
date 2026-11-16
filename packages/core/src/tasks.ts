@@ -9,7 +9,7 @@ import { missingCoverage, type CoverageHandling, type CoverageRow } from "./repo
 import type { ClaimKind } from "./types";
 
 export const TEMPLATE_VERSIONS = {
-  abstraction: "abstraction-v2",
+  abstraction: "abstraction-v3",
   split_requests: "split-v2",
   transcribe_image: "transcribe-v2",
 } as const;
@@ -51,6 +51,7 @@ Rules:
 - Do not invent specific facts the sources do not state (capacity, interfaces, permission rules, numbers, dates). When material is missing, use kind=unknown and say in missing what is missing and who could confirm it.
 - Be honest about the kind: source_fact only for what a source states explicitly; what you derive is inference; a proposal or check is suggestion and must not be presented as decided.
 - Cite only the E handles listed below, and put the part of the sentence you rely on in quote. Do not cite anything not listed.
+- E handles belong only in the evidence fields. Never write them in text, reasoning or missing: readers never see them, and they are renumbered later. Refer to a source by quoting or describing it instead. Request ids such as R1 may be used.
 - inference and suggestion must explain themselves in reasoning; inference also needs a citation.
 - Write in the same language as the source material.
 
@@ -269,4 +270,18 @@ export function parseTranscript(text: string): ParseResult<{ transcript: string 
   } catch {
     return { ok: false, errors: ["The output is not valid JSON"] };
   }
+}
+
+/**
+ * Replace evidence handles a model wrote into prose ("E10 allows…") with a
+ * label a reader can follow. Handles are internal and renumbered per report,
+ * so leaving them in would point readers at the wrong source.
+ */
+export function replaceHandleMentions(text: string, labelOf: (handle: string) => string | undefined): string {
+  return text.replace(/\bE(\d+)(?:\s*[–—-]\s*E(\d+))?\b/g, (match, a: string, b?: string) => {
+    const first = labelOf(`E${a}`);
+    if (!first) return match;
+    const last = b ? labelOf(`E${b}`) : undefined;
+    return !b || !last || last === first ? first : `${first} – ${last}`;
+  });
 }

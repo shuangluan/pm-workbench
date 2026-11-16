@@ -76,6 +76,19 @@ export function isHeartbeatStale(lastHeartbeatAt: Date, now: Date): boolean {
 }
 
 /**
+ * Fixed overhead a structured-output request adds beyond the system prompt,
+ * the user text and the schema itself. Calibrated on one real call
+ * (claude-opus-5-5, 2026-11-13: estimate without it 1,746, actual 2,283);
+ * revisit when more calls are measured.
+ */
+export const STRUCTURED_OUTPUT_OVERHEAD_TOKENS = 600;
+
+/** Input estimate for one structured call: system + text + schema + overhead. */
+export function estimateRequestTokens(parts: { system: string; text: string; schema: object }): number {
+  return estimateTokens(parts.system) + estimateTokens(parts.text) + estimateTokens(JSON.stringify(parts.schema)) + STRUCTURED_OUTPUT_OVERHEAD_TOKENS;
+}
+
+/**
  * Conservative token estimate when no provider tokenizer is available: one token
  * per CJK character, one per three other characters, rounded up. Errs high.
  */

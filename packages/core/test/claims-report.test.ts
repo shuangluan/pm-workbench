@@ -223,3 +223,13 @@ describe("next steps", () => {
     expect(md).toContain("## 建议的下一步");
   });
 });
+
+describe("handle mentions in prose", () => {
+  it("replaces handles and ranges with source labels and leaves unknown ones alone", async () => {
+    const { replaceHandleMentions } = await import("@pew/core");
+    const label = (h: string) => ({ E7: '"Policy"', E8: '"Policy"', E10: '"Policy"', E12: '"Ledger notes"' })[h];
+    expect(replaceHandleMentions("E10 allows store credit; see E7–E8 and E10-E12. E99 stays. HE10 too.", label)).toBe(
+      '"Policy" allows store credit; see "Policy" and "Policy" – "Ledger notes". E99 stays. HE10 too.',
+    );
+  });
+});
